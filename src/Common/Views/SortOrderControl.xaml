@@ -1,0 +1,132 @@
+<UserControl x:Class="ZwcadBatchPlot.SortOrderControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="Segoe UI" FontSize="11">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="WpfUi.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="CellStyle" TargetType="Border">
+                <Setter Property="BorderBrush" Value="#FF888888"/>
+                <Setter Property="BorderThickness" Value="0.5"/>
+                <Setter Property="Background" Value="#FFF8F8F8"/>
+                <Setter Property="Width" Value="28"/>
+                <Setter Property="Height" Value="22"/>
+            </Style>
+            <Style x:Key="CellTextStyle" TargetType="TextBlock">
+                <Setter Property="HorizontalAlignment" Value="Center"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="Foreground" Value="#FF333333"/>
+            </Style>
+            <Style x:Key="HighlightCellStyle" TargetType="Border">
+                <Setter Property="BorderBrush" Value="#FF0078D7"/>
+                <Setter Property="BorderThickness" Value="0.5"/>
+                <Setter Property="Background" Value="#FFDDEEFF"/>
+                <Setter Property="Width" Value="28"/>
+                <Setter Property="Height" Value="22"/>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <Grid Margin="12,10,12,8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="DialogTitleText" Grid.Row="0" Text="Выберите порядок пакетной печати" Margin="0,0,0,10"
+                   FontWeight="SemiBold"/>
+
+        <StackPanel x:Name="SortBasisPanel" Grid.Row="1" Margin="0,0,0,10">
+            <TextBlock Text="Основание сортировки" Margin="0,0,0,5"/>
+            <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="DrawingNumberSortRadio" GroupName="SortBasis" IsChecked="True"
+                             Content="По номеру листа" Margin="0,0,24,0"/>
+                <RadioButton x:Name="SpatialSortRadio" GroupName="SortBasis"
+                             Content="По расположению листа"/>
+            </StackPanel>
+            <TextBlock Text="Если номер и наименование совпадают, листы будут упорядочены по расположению, указанному ниже."
+                       Foreground="DimGray" Margin="0,5,0,0" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                <RadioButton x:Name="TopToBottomRadio" IsChecked="True"
+                             GroupName="SortOrder"
+                             Margin="0,0,0,8" VerticalContentAlignment="Center">
+                    <TextBlock Text="Сверху вниз, слева направо" TextWrapping="Wrap"/>
+                </RadioButton>
+                <Border BorderBrush="#FFAAAAAA" BorderThickness="1"
+                        HorizontalAlignment="Left" Padding="1">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource HighlightCellStyle}"><TextBlock Text="1" Style="{StaticResource CellTextStyle}" FontWeight="Bold"/></Border>
+                        <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource HighlightCellStyle}"><TextBlock Text="2" Style="{StaticResource CellTextStyle}" FontWeight="Bold"/></Border>
+                        <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource HighlightCellStyle}"><TextBlock Text="3" Style="{StaticResource CellTextStyle}" FontWeight="Bold"/></Border>
+                        <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource CellStyle}"><TextBlock Text="4" Style="{StaticResource CellTextStyle}"/></Border>
+                        <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource CellStyle}"><TextBlock Text="5" Style="{StaticResource CellTextStyle}"/></Border>
+                        <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource CellStyle}"><TextBlock Text="6" Style="{StaticResource CellTextStyle}"/></Border>
+                    </Grid>
+                </Border>
+                <TextBlock Text="Сначала строки сверху вниз, затем слева направо"
+                           Foreground="DimGray" Margin="0,4,0,0"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                <RadioButton x:Name="LeftToRightRadio"
+                             GroupName="SortOrder"
+                             Margin="0,0,0,8" VerticalContentAlignment="Center">
+                    <TextBlock Text="Слева направо, сверху вниз" TextWrapping="Wrap"/>
+                </RadioButton>
+                <Border BorderBrush="#FFAAAAAA" BorderThickness="1"
+                        HorizontalAlignment="Left" Padding="1">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource HighlightCellStyle}"><TextBlock Text="1" Style="{StaticResource CellTextStyle}" FontWeight="Bold"/></Border>
+                        <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource CellStyle}"><TextBlock Text="3" Style="{StaticResource CellTextStyle}"/></Border>
+                        <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource CellStyle}"><TextBlock Text="5" Style="{StaticResource CellTextStyle}"/></Border>
+                        <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource HighlightCellStyle}"><TextBlock Text="2" Style="{StaticResource CellTextStyle}" FontWeight="Bold"/></Border>
+                        <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource CellStyle}"><TextBlock Text="4" Style="{StaticResource CellTextStyle}"/></Border>
+                        <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource CellStyle}"><TextBlock Text="6" Style="{StaticResource CellTextStyle}"/></Border>
+                    </Grid>
+                </Border>
+                <TextBlock Text="Сначала столбцы слева направо, затем сверху вниз"
+                           Foreground="DimGray" Margin="0,4,0,0"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
+        </Grid>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,10,0,0">
+            <Button Content="ОК" MinWidth="76" Style="{StaticResource PluginButtonStyle}"
+                    Click="OnOkClick" Margin="0,0,4,0"/>
+            <Button Content="Отмена" MinWidth="76" Style="{StaticResource PluginButtonStyle}"
+                    Click="OnCancelClick"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

@@ -1,0 +1,2084 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using PiaNO;
+using Autodesk.AutoCAD.PlottingServices;
+#if ACAD_CORE
+using CadApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
+#else
+using CadApp = Autodesk.AutoCAD.ApplicationServices.Application;
+#endif
+
+namespace ZwcadBatchPlot;
+
+public static class AcadPlotterInstaller
+{
+    public const string PreferredPdfPlotter = "LA_pdf.pc3";
+    public const string PreferredPngPlotter = "LA_png.pc3";
+    public const string PreferredJpgPlotter = "LA_jpg.pc3";
+    public const string PreferredDwfPlotter = "LA_dwf.pc3";
+    private const string PreferredPmp = "LA_pdf.pmp";
+    private const string PreferredPngPmp = "LA_png.pmp";
+    private const string PreferredJpgPmp = "LA_jpg.pmp";
+    private const string PreferredDwfPmp = "LA_dwf.pmp";
+
+    public sealed class InstallResult
+    {
+        public bool SourceFound { get; set; }
+        public bool Installed { get; set; }
+
+        public bool Written { get; set; }
+        public string DeviceName { get; set; } = "";
+        public string TargetPlotterDirectory { get; set; } = "";
+        public string Message { get; set; } = "";
+    }
+
+    public sealed class PmpAttachmentResult
+    {
+        public bool Success { get; set; }
+        public bool Changed { get; set; }
+        public string ActivePlotterPath { get; set; } = "";
+        public string Message { get; set; } = "";
+    }
+
+    private static bool s_devicesRefreshedThisSession;
+
+    public static InstallResult InstallBundledPlotter()
+    {
+        var result = new InstallResult
+        {
+            DeviceName = PreferredPdfPlotter
+        };
+        try
+        {
+            var targetRoot = GetAutoCadPlotterDirectory();
+            if (string.IsNullOrWhiteSpace(targetRoot))
+            {
+                result.Message = "Не удалось найти папку плоттеров AutoCAD.";
+                return result;
+            }
+
+            result.TargetPlotterDirectory = targetRoot;
+            var targetPmpDir = Path.Combine(targetRoot, "PMP Files");
+            Directory.CreateDirectory(targetRoot);
+            Directory.CreateDirectory(targetPmpDir);
+            var targetPc3 = Path.Combine(targetRoot, PreferredPdfPlotter);
+            var targetPmp = Path.Combine(targetPmpDir, PreferredPmp);
+            result.SourceFound = true;
+
+
+            if (IsLaPlotterPairUsable(PreferredPdfPlotter, targetPc3, targetPmp))
+            {
+                var keepAttachment = EnsureActivePdfPmpAttachment(
+                    targetPc3,
+                    targetPmp,
+                    forceRewrite: false);
+                result.Installed = keepAttachment.Success;
+                result.Written = keepAttachment.Changed;
+                result.Message = keepAttachment.Success
+                    ? "LA_pdf уже доступен; существующие PC3/PMP сохранены."
+                      + (keepAttachment.Changed ? " " + keepAttachment.Message : "")
+                    : "Не удалось связать LA_pdf с фактическим устройством: " + keepAttachment.Message;
+                return result;
+            }
+
+            if (!TryInstallForcedPia2PdfPlotter(
+                    targetRoot,
+                    targetPc3,
+                    targetPmp,
+                    out var installMessage))
+            {
+                result.Message = installMessage;
+                return result;
+            }
+
+            if (!IsReadablePia2PlotterFile(targetPc3)
+                || !IsReadablePia2PlotterFile(targetPmp))
+            {
+                result.Message = "Созданный LA_pdf не является PIA2; установка остановлена.";
+                return result;
+            }
+
+            if (!EnsurePmpAttachment(
+                    targetPc3,
+                    targetPmp,
+                    forceRewrite: true,
+                    out var attachmentMessage))
+            {
+                result.Message = "Не удалось связать LA_pdf PIA2: " + attachmentMessage;
+                return result;
+            }
+
+            var activeAttachment = EnsureActivePdfPmpAttachment(
+                targetPc3,
+                targetPmp,
+                forceRewrite: true);
+            result.Installed = activeAttachment.Success;
+            result.Written = activeAttachment.Success;
+            result.Message = activeAttachment.Success
+                ? "LA_pdf заново создан из шаблона комплекта и зафиксирован как PIA2;"
+                  + activeAttachment.Message
+                : "не удалось связать LA_pdf с фактическим устройством: " + activeAttachment.Message;
+            return result;
+        }
+        catch (Exception ex)
+        {
+            result.Message = ex.Message;
+            return result;
+        }
+    }
+
+    public static InstallResult InstallPngPlotter()
+    {
+        return InstallRasterPlotter(PreferredPngPlotter, PreferredPngPmp);
+    }
+
+    public static InstallResult InstallJpgPlotter()
+    {
+        return InstallRasterPlotter(PreferredJpgPlotter, PreferredJpgPmp);
+    }
+
+    private static InstallResult InstallRasterPlotter(
+        string targetPlotterName,
+        string targetPmpName)
+    {
+        var result = new InstallResult
+        {
+            DeviceName = targetPlotterName
+        };
+        try
+        {
+            var targetRoot = GetAutoCadPlotterDirectory();
+            if (string.IsNullOrWhiteSpace(targetRoot))
+            {
+                result.Message = "Не удалось найти папку плоттеров AutoCAD.";
+                return result;
+            }
+
+            result.TargetPlotterDirectory = targetRoot;
+            var targetPmpDirectory = Path.Combine(targetRoot, "PMP Files");
+            Directory.CreateDirectory(targetRoot);
+            Directory.CreateDirectory(targetPmpDirectory);
+            var targetPc3 = Path.Combine(targetRoot, targetPlotterName);
+            var targetPmp = Path.Combine(targetPmpDirectory, targetPmpName);
+
+            if (IsLaPlotterPairUsable(targetPlotterName, targetPc3, targetPmp))
+            {
+                result.SourceFound = true;
+                result.Installed = true;
+                result.Message = targetPlotterName + " уже доступен; существующие PC3/PMP сохранены.";
+                return result;
+            }
+
+            var metadataSource = FindReadOnlyMetadataSource(targetRoot, targetPlotterName);
+            if (!TryWriteLaPia2PairFromTemplate(
+                    targetPlotterName,
+                    targetPc3,
+                    targetPmp,
+                    metadataSource,
+                    out var message))
+            {
+                result.Message = message;
+                return result;
+            }
+
+            result.SourceFound = true;
+            result.Installed = true;
+            result.Written = true;
+            result.Message = targetPlotterName + " создан из шаблона комплекта.";
+            return result;
+        }
+        catch (Exception ex)
+        {
+            result.Message = ex.Message;
+            return result;
+        }
+    }
+
+    /// <summary>
+
+    /// </summary>
+    public static void RefreshPlotterDevices(bool force = false)
+    {
+        if (!force && s_devicesRefreshedThisSession)
+            return;
+
+        try
+        {
+
+            Autodesk.AutoCAD.PlottingServices.PlotConfigManager.RefreshList(
+                Autodesk.AutoCAD.PlottingServices.RefreshCode.RefreshPC3DevicesList);
+            s_devicesRefreshedThisSession = true;
+        }
+        catch
+        {
+
+        }
+    }
+
+    /// <summary>
+
+    /// </summary>
+    public static void RefreshPlotterDevicesIfNeeded(bool configWritten)
+    {
+        RefreshPlotterDevices(force: configWritten || !s_devicesRefreshedThisSession);
+    }
+
+    public static (double X, double Y) GetRasterDpi(string deviceName)
+    {
+        try
+        {
+            var plottersDirectory = GetAutoCadPlotterDirectory();
+            var pc3Path = string.IsNullOrWhiteSpace(plottersDirectory)
+                ? ""
+                : Path.Combine(plottersDirectory, Path.GetFileName(deviceName));
+            if (!File.Exists(pc3Path))
+            {
+                return (100d, 100d);
+            }
+
+            var raw = File.ReadAllText(pc3Path);
+            if (TryReadPia3Json(raw, out var pia3Root))
+            {
+                return ReadPia3RasterDpi(pia3Root);
+            }
+
+            return ReadPia2RasterDpi(new PlotterConfiguration(pc3Path));
+        }
+        catch
+        {
+
+            return (100d, 100d);
+        }
+    }
+
+    public static InstallResult InstallDwfPlotter()
+    {
+        var result = new InstallResult
+        {
+            DeviceName = PreferredDwfPlotter
+        };
+        try
+        {
+            var targetRoot = GetAutoCadPlotterDirectory();
+            if (string.IsNullOrWhiteSpace(targetRoot))
+            {
+                result.Message = "Не удалось найти папку плоттеров AutoCAD.";
+                return result;
+            }
+
+            result.TargetPlotterDirectory = targetRoot;
+            var targetPc3 = Path.Combine(targetRoot, PreferredDwfPlotter);
+            var targetPmpDir = Path.Combine(targetRoot, "PMP Files");
+            var targetPmp = Path.Combine(targetPmpDir, PreferredDwfPmp);
+            Directory.CreateDirectory(targetRoot);
+            Directory.CreateDirectory(targetPmpDir);
+
+            if (IsLaPlotterPairUsable(PreferredDwfPlotter, targetPc3, targetPmp))
+            {
+                result.SourceFound = true;
+                result.Installed = true;
+                result.Message = "LA_dwf уже доступен; существующие PC3/PMP сохранены.";
+                return result;
+            }
+
+            var sourcePc3 = FindReadOnlyMetadataSource(targetRoot, PreferredDwfPlotter);
+            if (!TryWriteLaPia2PairFromTemplate(
+                    PreferredDwfPlotter,
+                    targetPc3,
+                    targetPmp,
+                    sourcePc3,
+                    out var message))
+            {
+                result.Message = message;
+                return result;
+            }
+
+            result.SourceFound = true;
+            result.Installed = true;
+            result.Written = true;
+            result.Message = "LA_dwf создан из шаблона комплекта.";
+            return result;
+        }
+        catch (Exception ex)
+        {
+            result.Message = ex.Message;
+            return result;
+        }
+    }
+
+    /// <summary>
+
+
+    /// </summary>
+    private static bool IsLaPlotterPairUsable(string deviceName, string pc3Path, string pmpPath)
+    {
+        if (!IsSupportedLaPlotter(deviceName))
+            return false;
+        if (!IsReadablePia2PlotterFile(pc3Path) || !IsReadablePia2PlotterFile(pmpPath))
+            return false;
+        if (!HasCompleteBundledMediaCatalog(deviceName, pmpPath))
+            return false;
+        if (string.IsNullOrWhiteSpace(ReadDriverPath(pc3Path)))
+            return false;
+
+        var attachedPmp = ReadAttachedPmpPath(pc3Path);
+        return !string.IsNullOrWhiteSpace(attachedPmp) && PathsEqual(attachedPmp, pmpPath);
+    }
+
+    private static bool IsValidPlotterFile(string path)
+    {
+        if (!File.Exists(path)) return false;
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var header = new byte[30];
+            if (fs.Read(header, 0, header.Length) < 10) return false;
+            var text = System.Text.Encoding.ASCII.GetString(header);
+            return text.StartsWith("PIAFILEVERSION") || text.StartsWith("[Meta]");
+        }
+        catch { return false; }
+    }
+
+    private static bool IsPia2PlotterFile(string path)
+    {
+        if (!File.Exists(path))
+            return false;
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var header = new byte[32];
+            var read = fs.Read(header, 0, header.Length);
+            var text = System.Text.Encoding.ASCII.GetString(header, 0, read);
+            return text.StartsWith("PIAFILEVERSION_2.0", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+
+
+
+    /// </summary>
+    public static string ResolveActivePlotterPath(string deviceName)
+    {
+        if (string.IsNullOrWhiteSpace(deviceName))
+            return "";
+
+        try
+        {
+            using var config = PlotConfigManager.SetCurrentConfig(Path.GetFileName(deviceName));
+            var resolved = config?.FullPath ?? "";
+            if (!string.IsNullOrWhiteSpace(resolved) && File.Exists(resolved))
+                return Path.GetFullPath(resolved);
+        }
+        catch
+        {
+
+        }
+
+        var plottersDirectory = GetAutoCadPlotterDirectory();
+        return string.IsNullOrWhiteSpace(plottersDirectory)
+            ? ""
+            : Path.Combine(plottersDirectory, Path.GetFileName(deviceName));
+    }
+
+    /// <summary>
+
+
+    /// </summary>
+    public static PlotTextGeometryModeResult ApplyTextGeometryMode(string deviceName, bool convertToGeometry)
+    {
+        var result = new PlotTextGeometryModeResult();
+        var fileName = Path.GetFileName(deviceName ?? "");
+        if (string.Equals(fileName, PreferredPngPlotter, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(fileName, PreferredJpgPlotter, StringComparison.OrdinalIgnoreCase))
+        {
+            result.Success = true;
+            result.Message = "PNG/JPG выводятся в пикселях; преобразование текста не требуется.";
+            return result;
+        }
+
+        if (!string.Equals(fileName, PreferredPdfPlotter, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(fileName, PreferredDwfPlotter, StringComparison.OrdinalIgnoreCase))
+        {
+            result.Success = !convertToGeometry;
+            result.Message = convertToGeometry
+                ? "Преобразование текста в геометрию поддерживается только плоттерами LA_pdf/LA_dwf этого плагина."
+                : "Для текущего плоттера не требуется восстанавливать параметры вывода текста.";
+            return result;
+        }
+
+        try
+        {
+            var pc3Path = ResolveActivePlotterPath(fileName);
+            if (!IsValidPlotterFile(pc3Path)
+                || !IsAllowedLaPlotterPath(pc3Path)
+                || !string.Equals(Path.GetFileName(pc3Path), fileName, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Message = "Изменение конфигурации вне папки плагина или недопустимого плоттера запрещено: " + pc3Path;
+                return result;
+            }
+
+            var attachedPmp = ReadAttachedPmpPath(pc3Path);
+            result.Changed = ApplyTextGeometryToPiaFile(pc3Path, convertToGeometry, updateAllAsGeometry: true);
+            if (IsValidPlotterFile(attachedPmp)
+                && IsAllowedLaPlotterPath(attachedPmp)
+                && Path.GetFileNameWithoutExtension(attachedPmp).StartsWith("LA_", StringComparison.OrdinalIgnoreCase))
+            {
+                result.Changed |= ApplyTextGeometryToPiaFile(attachedPmp, convertToGeometry, updateAllAsGeometry: false);
+            }
+
+            if (result.Changed)
+            {
+                RefreshPlotterDevices(force: true);
+            }
+
+            result.Success = true;
+            result.Message = convertToGeometry ? "TrueType-текст будет выводиться как геометрия." : "TrueType-текст будет выводиться как текст.";
+            return result;
+        }
+        catch (Exception ex)
+        {
+            result.Message = "Не удалось переключить режим вывода текста: " + ex.Message;
+            return result;
+        }
+    }
+
+    private static bool ApplyTextGeometryToPiaFile(
+        string path,
+        bool convertToGeometry,
+        bool updateAllAsGeometry)
+    {
+        var raw = File.ReadAllText(path);
+        if (PlotTextGeometryFileUpdater.TryUpdatePia3(
+                raw,
+                convertToGeometry,
+                updateAllAsGeometry,
+                out var updatedPia3,
+                out var changed))
+        {
+            if (changed)
+            {
+                File.WriteAllText(path, updatedPia3);
+            }
+            return changed;
+        }
+
+        var config = new PlotterConfiguration(path);
+        var pia2Changed = config.TruetypeAsText == convertToGeometry;
+        if (pia2Changed)
+        {
+            config.TruetypeAsText = !convertToGeometry;
+        }
+
+        if (updateAllAsGeometry)
+        {
+            try
+            {
+                var currentAllAsGeometry = config.GetCustomValue<bool>("All_As_Geometry");
+                if (currentAllAsGeometry != convertToGeometry)
+                {
+                    config.SetCustomValue("All_As_Geometry", convertToGeometry);
+                    pia2Changed = true;
+                }
+            }
+            catch
+            {
+
+            }
+        }
+
+        if (pia2Changed)
+        {
+            config.Saves(path);
+        }
+        return pia2Changed;
+    }
+
+    /// <summary>
+
+
+    /// </summary>
+    public static string ReadAttachedPmpPath(string pc3Path)
+    {
+        if (!IsValidPlotterFile(pc3Path))
+            return "";
+
+        try
+        {
+            var raw = File.ReadAllText(pc3Path);
+            if (TryReadPia3Json(raw, out var root))
+                return root["data"]?["meta"]?["user_defined_model_pathname"]?.Value<string>() ?? "";
+
+            return new PlotterConfiguration(pc3Path).ModelPath ?? "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    /// <summary>
+
+
+
+    /// </summary>
+    public static PmpAttachmentResult EnsureActivePdfPmpAttachment(
+        string configuredPc3Path,
+        string pmpPath,
+        bool forceRewrite)
+    {
+        var result = new PmpAttachmentResult();
+        try
+        {
+            if (!string.Equals(
+                    Path.GetFileName(configuredPc3Path),
+                    PreferredPdfPlotter,
+                    StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(
+                    Path.GetFileName(pmpPath),
+                    PreferredPmp,
+                    StringComparison.OrdinalIgnoreCase)
+                || !IsReadablePia2PlotterFile(configuredPc3Path)
+                || !IsReadablePia2PlotterFile(pmpPath))
+            {
+                result.Message = "Синхронизация конфигураций LA разрешена только через PIA2 LA_pdf.pc3/LA_pdf.pmp.";
+                return result;
+            }
+
+            var activePath = ResolveActivePlotterPath(PreferredPdfPlotter);
+            result.ActivePlotterPath = activePath;
+            var targets = new[] { configuredPc3Path, activePath }
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(Path.GetFullPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (targets.Count == 0)
+            {
+                result.Message = "Файл LA_pdf.pc3 не найден.";
+                return result;
+            }
+
+            foreach (var target in targets)
+            {
+                if (!string.Equals(
+                        Path.GetFileName(target),
+                        PreferredPdfPlotter,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    result.Message = "Изменение файла, отличного от LA_pdf.pc3, запрещено: " + target;
+                    return result;
+                }
+
+                if (!IsAllowedLaPlotterPath(target))
+                {
+                    result.Message =
+                        "Фактически загруженный AutoCAD файл LA_pdf.pc3 находится вне путей поиска конфигураций плоттеров и папки профиля текущего CAD; изменение остановлено: "
+                        + target;
+                    return result;
+                }
+
+                var before = File.Exists(target) ? File.ReadAllBytes(target) : Array.Empty<byte>();
+                var targetWasReplaced = false;
+                if (!string.Equals(
+                        Path.GetFullPath(target),
+                        Path.GetFullPath(configuredPc3Path),
+                        StringComparison.OrdinalIgnoreCase))
+                {
+
+
+                    File.Copy(configuredPc3Path, target, overwrite: true);
+                    targetWasReplaced = true;
+                }
+
+                if (!EnsurePmpAttachment(
+                        target,
+                        pmpPath,
+                        forceRewrite || targetWasReplaced,
+                        out var targetMessage))
+                {
+                    result.Message = target + ": " + targetMessage;
+                    return result;
+                }
+
+                var after = File.ReadAllBytes(target);
+                result.Changed |= !before.SequenceEqual(after);
+            }
+
+            result.Success = true;
+            result.Message =
+                $"Фактический PC3={activePath}; PMP={Path.GetFullPath(pmpPath)}; синхронизировано={result.Changed}";
+            return result;
+        }
+        catch (Exception ex)
+        {
+            result.Message = ex.Message;
+            return result;
+        }
+    }
+
+    /// <summary>
+
+
+
+    /// </summary>
+    public static bool EnsurePmpAttachment(
+        string pc3Path,
+        string pmpPath,
+        bool forceRewrite,
+        out string message)
+    {
+        message = "";
+        if (!string.Equals(
+                Path.GetFileName(pc3Path),
+                PreferredPdfPlotter,
+                StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(
+                Path.GetFileName(pmpPath),
+                PreferredPmp,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            message = "Разрешено обновлять только поля связи LA_pdf.pc3/LA_pdf.pmp.";
+            return false;
+        }
+
+        if (!IsReadablePia2PlotterFile(pc3Path)
+            || !IsReadablePia2PlotterFile(pmpPath))
+        {
+            message = "LA_pdf.pc3 или LA_pdf.pmp не является читаемым файлом PIA2.";
+            return false;
+        }
+
+        try
+        {
+            var fullPmpPath = Path.GetFullPath(pmpPath);
+            var expectedBase = Path.GetFileNameWithoutExtension(fullPmpPath);
+
+
+            var pmpDirectory = Path.GetDirectoryName(fullPmpPath) ?? "";
+            var authoritativePlottersDirectory =
+                string.Equals(Path.GetFileName(pmpDirectory), "PMP Files", StringComparison.OrdinalIgnoreCase)
+                    ? Path.GetDirectoryName(pmpDirectory) ?? ""
+                    : "";
+            var sourceDriverPath = ReadDriverPath(
+                Path.Combine(authoritativePlottersDirectory, "DWG To PDF.pc3"));
+            if (string.IsNullOrWhiteSpace(sourceDriverPath))
+            {
+                var plottersDirectory = Path.GetDirectoryName(pc3Path) ?? "";
+                sourceDriverPath = ReadDriverPath(Path.Combine(plottersDirectory, "DWG To PDF.pc3"));
+            }
+            EnsurePia2MetaFile(pc3Path, fullPmpPath, expectedBase, sourceDriverPath, forceRewrite);
+            EnsurePia2MetaFile(pmpPath, fullPmpPath, expectedBase, sourceDriverPath, forceRewrite);
+            message = $"PMP={fullPmpPath}; драйвер унаследован от текущего DWG To PDF.pc3";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+            return false;
+        }
+    }
+
+    private static void EnsurePia2MetaFile(
+        string path,
+        string pmpPath,
+        string expectedBase,
+        string sourceDriverPath,
+        bool forceRewrite)
+    {
+        var config = new PlotterConfiguration(path);
+        var driverDiffers = !string.IsNullOrWhiteSpace(sourceDriverPath)
+            && !string.Equals(config.DriverPath ?? "", sourceDriverPath, StringComparison.OrdinalIgnoreCase);
+        var needsWrite = forceRewrite
+            || !PathsEqual(config.ModelPath ?? "", pmpPath)
+            || !string.Equals(config.ModelBase ?? "", expectedBase, StringComparison.OrdinalIgnoreCase)
+            || driverDiffers;
+        if (!needsWrite)
+            return;
+
+        config.ModelPath = pmpPath;
+        config.ModelBase = expectedBase;
+        if (!string.IsNullOrWhiteSpace(sourceDriverPath))
+            config.DriverPath = sourceDriverPath;
+        config.Saves(path);
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(left),
+                Path.GetFullPath(right),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsPathInsideDirectory(string path, string directory)
+    {
+        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(directory))
+            return false;
+
+        try
+        {
+            var fullPath = Path.GetFullPath(path);
+            var fullDirectory = Path.GetFullPath(directory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            return fullPath.StartsWith(fullDirectory, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+
+
+    /// </summary>
+    private static bool TryWriteLaPia2PairFromTemplate(
+        string deviceName,
+        string targetPc3,
+        string targetPmp,
+        string metadataSourcePc3,
+        out string message)
+    {
+        message = "";
+        if (!IsSupportedLaPlotter(deviceName))
+        {
+            message = "Создание плоттера вне серии LA запрещено.";
+            return false;
+        }
+
+        var templatePc3 = GetBundledPia2Template(deviceName, out var templatePmp);
+        if (!IsReadablePia2PlotterFile(templatePc3)
+            || !IsReadablePia2PlotterFile(templatePmp))
+        {
+            message = "Шаблон PIA2 из комплекта отсутствует или не читается: " + deviceName;
+            return false;
+        }
+
+        var sourceDriverPath = ReadDriverPath(metadataSourcePc3);
+        if (string.IsNullOrWhiteSpace(sourceDriverPath))
+        {
+            message = "Не удалось прочитать путь драйвера из штатного плоттера текущего CAD; замена конфигурации LA остановлена.";
+            return false;
+        }
+
+        var token = Guid.NewGuid().ToString("N");
+        var tempPc3 = targetPc3 + ".new-" + token;
+        var tempPmp = targetPmp + ".new-" + token;
+        var backupPc3 = targetPc3 + ".backup-" + token;
+        var backupPmp = targetPmp + ".backup-" + token;
+
+        try
+        {
+
+            File.Copy(templatePc3, tempPc3, overwrite: true);
+            File.Copy(templatePmp, tempPmp, overwrite: true);
+
+
+
+            EnsurePia2MetaFile(
+                tempPc3,
+                Path.GetFullPath(targetPmp),
+                Path.GetFileNameWithoutExtension(targetPmp),
+                sourceDriverPath,
+                forceRewrite: true);
+            EnsurePia2MetaFile(
+                tempPmp,
+                Path.GetFullPath(targetPmp),
+                Path.GetFileNameWithoutExtension(targetPmp),
+                sourceDriverPath,
+                forceRewrite: true);
+
+            if (!IsReadablePia2PlotterFile(tempPc3)
+                || !IsReadablePia2PlotterFile(tempPmp)
+                || !HasCompleteBundledMediaCatalog(deviceName, tempPmp))
+                throw new InvalidDataException("Временные LA PC3/PMP не прошли полную проверку PIA2.");
+
+            if (File.Exists(targetPc3))
+                File.Copy(targetPc3, backupPc3, overwrite: true);
+            if (File.Exists(targetPmp))
+                File.Copy(targetPmp, backupPmp, overwrite: true);
+            File.Copy(tempPc3, targetPc3, overwrite: true);
+            File.Copy(tempPmp, targetPmp, overwrite: true);
+
+            if (!IsReadablePia2PlotterFile(targetPc3)
+                || !IsReadablePia2PlotterFile(targetPmp)
+                || !HasCompleteBundledMediaCatalog(deviceName, targetPmp))
+                throw new InvalidDataException("Итоговые LA PC3/PMP не прошли полную проверку PIA2.");
+
+            message = $"LA {deviceName} создан непосредственно из фиксированного шаблона PIA2.";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                if (File.Exists(backupPc3))
+                    File.Copy(backupPc3, targetPc3, overwrite: true);
+                if (File.Exists(backupPmp))
+                    File.Copy(backupPmp, targetPmp, overwrite: true);
+            }
+            catch
+            {
+
+            }
+
+            message = "Не удалось создать конфигурацию из шаблона LA PIA2; операция остановлена, другие плоттеры не изменены: " + ex.Message;
+            return false;
+        }
+        finally
+        {
+            DeleteTemporaryFile(tempPc3);
+            DeleteTemporaryFile(tempPmp);
+            DeleteTemporaryFile(backupPc3);
+            DeleteTemporaryFile(backupPmp);
+        }
+    }
+
+    /// <summary>
+
+
+    /// </summary>
+    private static bool TryInstallForcedPia2PdfPlotter(
+        string plottersDirectory,
+        string targetPc3,
+        string targetPmp,
+        out string message)
+    {
+        var sourcePc3 = Path.Combine(plottersDirectory, "DWG To PDF.pc3");
+        if (!File.Exists(sourcePc3))
+        {
+            sourcePc3 = FindPdfDriverPc3(plottersDirectory)
+                ?? sourcePc3;
+        }
+
+        return TryWriteLaPia2PairFromTemplate(
+            PreferredPdfPlotter,
+            targetPc3,
+            targetPmp,
+            sourcePc3,
+            out message);
+    }
+
+    /// <summary>
+
+    /// </summary>
+    private static string? FindPdfDriverPc3(string plottersDirectory)
+    {
+        try
+        {
+            foreach (var candidate in Directory.EnumerateFiles(plottersDirectory, "*.pc3", SearchOption.TopDirectoryOnly))
+            {
+                var driverPath = ReadDriverPath(candidate);
+                if (!string.IsNullOrWhiteSpace(driverPath)
+                    && driverPath.IndexOf("pdf", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return candidate;
+                }
+            }
+        }
+        catch
+        {
+
+        }
+
+        return null;
+    }
+
+    private static bool IsSupportedLaPlotter(string deviceName)
+    {
+        return string.Equals(deviceName, PreferredPdfPlotter, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(deviceName, PreferredPngPlotter, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(deviceName, PreferredJpgPlotter, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(deviceName, PreferredDwfPlotter, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetBundledPia2Template(string deviceName, out string pmpPath)
+    {
+        pmpPath = "";
+        var sourceRoot = FindBundledPlotterRoot();
+        if (string.IsNullOrWhiteSpace(sourceRoot))
+            return "";
+
+        var pc3Path = Path.Combine(sourceRoot, "PIA2", deviceName);
+        pmpPath = Path.Combine(
+            sourceRoot,
+            "PIA2",
+            "PMP Files",
+            Path.GetFileNameWithoutExtension(deviceName) + ".pmp");
+        return pc3Path;
+    }
+
+    /// <summary>
+
+    /// </summary>
+    private static bool HasCompleteBundledMediaCatalog(string deviceName, string targetPmp)
+    {
+        if (!IsSupportedLaPlotter(deviceName))
+            return false;
+
+        _ = GetBundledPia2Template(deviceName, out var templatePmp);
+        if (!TryReadPia2MediaDimensions(templatePmp, out var required)
+            || !TryReadPia2MediaDimensions(targetPmp, out var actual)
+            || required.Count == 0)
+        {
+            return false;
+        }
+
+        return required.All(expected =>
+            actual.Any(candidate =>
+                Math.Abs(candidate.Width - expected.Width) <= 0.01d
+                && Math.Abs(candidate.Height - expected.Height) <= 0.01d));
+    }
+
+    private static bool TryReadPia2MediaDimensions(
+        string pmpPath,
+        out List<(double Width, double Height)> result)
+    {
+        result = new List<(double Width, double Height)>();
+        if (!IsReadablePia2PlotterFile(pmpPath))
+            return false;
+
+        try
+        {
+            var config = new PlotterConfiguration(pmpPath);
+            var descriptions = config["udm"]?["media"]?["description"];
+            if (descriptions == null)
+                return false;
+
+            foreach (var description in descriptions.ChildNodes)
+            {
+                if (!description.NodeMap.TryGetValue("caps_type", out var capsType)
+                    || !string.Equals(capsType, "2", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var width = ReadPia2Number(description, "media_bounds_urx");
+                var height = ReadPia2Number(description, "media_bounds_ury");
+                if (width > 0d && height > 0d)
+                    result.Add((width, height));
+            }
+
+            return true;
+        }
+        catch
+        {
+            result.Clear();
+            return false;
+        }
+    }
+
+    private static bool IsReadablePia2PlotterFile(string path)
+    {
+        if (!IsPia2PlotterFile(path))
+            return false;
+
+        try
+        {
+            _ = new PlotterConfiguration(path);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string FindReadOnlyMetadataSource(string plottersDirectory, string deviceName)
+    {
+        if (string.IsNullOrWhiteSpace(plottersDirectory) || !Directory.Exists(plottersDirectory))
+            return "";
+
+        if (string.Equals(deviceName, PreferredPdfPlotter, StringComparison.OrdinalIgnoreCase))
+            return Path.Combine(plottersDirectory, "DWG To PDF.pc3");
+
+        var sources = Directory.EnumerateFiles(plottersDirectory, "*.pc3", SearchOption.AllDirectories)
+            .Where(path => !Path.GetFileName(path).StartsWith("LA_", StringComparison.OrdinalIgnoreCase));
+        if (string.Equals(deviceName, PreferredPngPlotter, StringComparison.OrdinalIgnoreCase))
+        {
+            return sources.FirstOrDefault(path =>
+                       string.Equals(
+                           Path.GetFileName(path),
+                           "PublishToWeb PNG.pc3",
+                           StringComparison.OrdinalIgnoreCase))
+                   ?? "";
+        }
+
+        if (string.Equals(deviceName, PreferredJpgPlotter, StringComparison.OrdinalIgnoreCase))
+        {
+            return sources.FirstOrDefault(path =>
+                       string.Equals(
+                           Path.GetFileName(path),
+                           "PublishToWeb JPG.pc3",
+                           StringComparison.OrdinalIgnoreCase))
+                   ?? "";
+        }
+
+        return sources
+                   .OrderBy(path =>
+                       string.Equals(
+                           Path.GetFileName(path),
+                           "DWF6 ePlot.pc3",
+                           StringComparison.OrdinalIgnoreCase)
+                           ? 0
+                           : 1)
+                   .FirstOrDefault(path =>
+                       Path.GetFileName(path).IndexOf("DWF", StringComparison.OrdinalIgnoreCase) >= 0
+                       && Path.GetFileName(path).IndexOf("DWFx", StringComparison.OrdinalIgnoreCase) < 0)
+               ?? "";
+    }
+
+    private static double ReadPia2Number(PiaNode node, string key)
+    {
+        return node.NodeMap.TryGetValue(key, out var value)
+               && double.TryParse(
+                   value,
+                   NumberStyles.Float,
+                   CultureInfo.InvariantCulture,
+                   out var number)
+            ? number
+            : 0d;
+    }
+
+    private static void DeleteTemporaryFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch
+        {
+
+        }
+    }
+
+    private static void InstallPia3FromCurrentDwgToPdf(JObject sourceRoot, string targetPc3, string targetPmp)
+    {
+        var pc3Root = (JObject)sourceRoot.DeepClone();
+        NormalizePia3RootMeta(pc3Root, targetPmp);
+        File.WriteAllText(targetPc3, "PIAFILEVERSION_3.0,json\n" + pc3Root.ToString(Formatting.Indented));
+
+        var pmpRoot = (JObject)sourceRoot.DeepClone();
+        var data = EnsureObject(pmpRoot, "data");
+        data.Remove("media");
+        data.Remove("io");
+        data.Remove("res_color_mem");
+        data.Remove("custom");
+        NormalizePia3RootMeta(pmpRoot, targetPmp);
+        AddPia3UserMedia(data);
+        File.WriteAllText(targetPmp, "PIAFILEVERSION_3.0,json\n" + pmpRoot.ToString(Formatting.Indented));
+    }
+
+    private static void InstallPia2FromCurrentDwgToPdf(string sourcePc3, string targetPc3, string targetPmp)
+    {
+
+        InstallPia2FromSource(sourcePc3, targetPc3, targetPmp, ReadDriverPath(sourcePc3));
+    }
+
+    private static void InstallPia2FromSource(string sourcePc3, string targetPc3, string targetPmp, string driverPath)
+    {
+
+        var pc3 = new PlotterConfiguration(sourcePc3)
+        {
+            ModelPath = targetPmp,
+            ModelBase = Path.GetFileNameWithoutExtension(targetPmp),
+            TruetypeAsText = true
+        };
+        if (!string.IsNullOrWhiteSpace(driverPath))
+        {
+            pc3.DriverPath = driverPath;
+        }
+
+        pc3.Saves(targetPc3);
+
+        var pmp = new PlotterConfiguration(sourcePc3)
+        {
+            ModelPath = targetPmp,
+            ModelBase = Path.GetFileNameWithoutExtension(targetPmp),
+            TruetypeAsText = true
+        };
+        if (!string.IsNullOrWhiteSpace(driverPath))
+        {
+            pmp.DriverPath = driverPath;
+        }
+
+        pmp.Remove("media");
+        pmp.Remove("io");
+        pmp.Remove("res_color_mem");
+        pmp.Remove("custom");
+        pmp.Remove("mod");
+        pmp.Remove("del");
+        pmp.Remove("udm");
+        pmp.Remove("hidden");
+        AddPia2MediaContainers(pmp);
+        pmp.Saves(targetPmp);
+    }
+
+    private static void InstallPia2RasterFromSource(string sourcePc3, string targetPc3, string targetPmp, string driverPath)
+    {
+        var pc3 = new PlotterConfiguration(sourcePc3)
+        {
+            ModelPath = targetPmp,
+            ModelBase = Path.GetFileNameWithoutExtension(targetPmp),
+            TruetypeAsText = true
+        };
+        if (!string.IsNullOrWhiteSpace(driverPath))
+        {
+            pc3.DriverPath = driverPath;
+        }
+
+        var dpi = ReadPia2RasterDpi(pc3);
+        pc3.Saves(targetPc3);
+
+        var pmp = new PlotterConfiguration(sourcePc3)
+        {
+            ModelPath = targetPmp,
+            ModelBase = Path.GetFileNameWithoutExtension(targetPmp),
+            TruetypeAsText = true
+        };
+        if (!string.IsNullOrWhiteSpace(driverPath))
+        {
+            pmp.DriverPath = driverPath;
+        }
+
+        pmp.Remove("media");
+        pmp.Remove("io");
+        pmp.Remove("res_color_mem");
+        pmp.Remove("custom");
+        pmp.Remove("mod");
+        pmp.Remove("del");
+        pmp.Remove("udm");
+        pmp.Remove("hidden");
+
+        AddPia2RasterMediaContainers(pmp, dpi.X, dpi.Y);
+        pmp.Saves(targetPmp);
+    }
+
+    private static void InstallPia3RasterFromSource(JObject sourceRoot, string targetPc3, string targetPmp)
+    {
+        var pc3Root = (JObject)sourceRoot.DeepClone();
+        NormalizePia3RootMeta(pc3Root, targetPmp);
+        var dpi = ReadPia3RasterDpi(pc3Root);
+        File.WriteAllText(targetPc3, "PIAFILEVERSION_3.0,json\n" + pc3Root.ToString(Formatting.Indented));
+
+        var pmpRoot = (JObject)sourceRoot.DeepClone();
+        var data = EnsureObject(pmpRoot, "data");
+        data.Remove("media");
+        data.Remove("io");
+        data.Remove("res_color_mem");
+        data.Remove("custom");
+        NormalizePia3RootMeta(pmpRoot, targetPmp);
+        AddPia3RasterUserMedia(data, dpi.X, dpi.Y);
+        File.WriteAllText(targetPmp, "PIAFILEVERSION_3.0,json\n" + pmpRoot.ToString(Formatting.Indented));
+    }
+
+    private static void NormalizePia3RootMeta(JObject root, string pmpPath)
+    {
+        var meta = EnsureObject(EnsureObject(root, "data"), "meta");
+        meta["user_defined_model_pathname"] = pmpPath;
+        meta["user_defined_model_basename"] = Path.GetFileNameWithoutExtension(pmpPath);
+    }
+
+    private static JObject EnsureObject(JObject parent, string name)
+    {
+        if (parent[name] is JObject existing)
+        {
+            return existing;
+        }
+
+        var created = new JObject();
+        parent[name] = created;
+        return created;
+    }
+
+    private static void AddPia3UserMedia(JObject data)
+    {
+        var mediaCaps = CreateMediaCaps();
+        data["mod"] = new JObject { ["media"] = mediaCaps.DeepClone() };
+        data["del"] = new JObject { ["media"] = mediaCaps.DeepClone() };
+        data["hidden"] = new JObject { ["media"] = mediaCaps.DeepClone() };
+
+        var udmMedia = (JObject)mediaCaps.DeepClone();
+        var descriptions = new JObject();
+        var sizes = new JObject();
+        var index = 0;
+        foreach (var paper in StandardUserPapers())
+        {
+            descriptions[index.ToString(CultureInfo.InvariantCulture)] = CreatePia3Description(paper);
+            sizes[index.ToString(CultureInfo.InvariantCulture)] = CreatePia3Size(paper);
+            index++;
+        }
+
+        udmMedia["description"] = descriptions;
+        udmMedia["size"] = sizes;
+        udmMedia["calibration"] = new JObject
+        {
+            ["_x"] = 1.0,
+            ["_y"] = 1.0
+        };
+        data["udm"] = new JObject
+        {
+            ["calibration"] = new JObject
+            {
+                ["_x"] = 1.0,
+                ["_y"] = 1.0
+            },
+            ["media"] = udmMedia
+        };
+    }
+
+    private static JObject CreateMediaCaps() => new()
+    {
+        ["abilities"] = "500005500500505555000005550000000550000500000500000",
+        ["caps_state"] = "000000000000000000000000000000000000000000000000000",
+        ["ui_owner"] = "11111111111111111111000",
+        ["size_max_x"] = 5080.0,
+        ["size_max_y"] = 5080.0
+    };
+
+    private sealed class PaperSpec
+    {
+        public string Name { get; set; } = "";
+        public double Width { get; set; }
+        public double Height { get; set; }
+    }
+
+    private sealed class RasterPaperSpec
+    {
+        public string Name { get; set; } = "";
+        public int WidthPixels { get; set; }
+        public int HeightPixels { get; set; }
+    }
+
+    private static IEnumerable<PaperSpec> StandardUserPapers()
+    {
+        var basePapers = new[]
+        {
+            new PaperSpec { Name = "A4", Width = 297, Height = 210 },
+            new PaperSpec { Name = "A3", Width = 420, Height = 297 },
+            new PaperSpec { Name = "A2", Width = 594, Height = 420 },
+            new PaperSpec { Name = "A1", Width = 841, Height = 594 },
+            new PaperSpec { Name = "A0", Width = 1189, Height = 841 }
+        };
+
+        var multipliers = Enumerable.Range(8, 25).Select(unit => unit / 8d);
+
+        foreach (var paper in basePapers)
+        {
+            foreach (var multiplier in multipliers)
+            {
+                var suffix = Math.Abs(multiplier - 1d) < 1e-9
+                    ? ""
+                    : "_" + multiplier.ToString("0.##", CultureInfo.InvariantCulture) + "L";
+                yield return new PaperSpec
+                {
+                    Name = paper.Name + suffix,
+                    Width = Math.Round(paper.Width * multiplier),
+                    Height = paper.Height
+                };
+            }
+        }
+    }
+
+    private static IEnumerable<RasterPaperSpec> RasterUserPapers(double dpiX, double dpiY)
+    {
+        foreach (var paper in StandardUserPapers())
+        {
+            var landscape = CreateRasterPaper(paper.Name, paper.Width, paper.Height, dpiX, dpiY);
+            yield return landscape;
+
+
+            var portrait = CreateRasterPaper(paper.Name, paper.Height, paper.Width, dpiX, dpiY);
+            if (portrait.WidthPixels != landscape.WidthPixels || portrait.HeightPixels != landscape.HeightPixels)
+            {
+                yield return portrait;
+            }
+        }
+    }
+
+    private static RasterPaperSpec CreateRasterPaper(
+        string name,
+        double widthMm,
+        double heightMm,
+        double dpiX,
+        double dpiY)
+    {
+        return new RasterPaperSpec
+        {
+            Name = name,
+            WidthPixels = Math.Max(1, (int)Math.Round(widthMm / 25.4d * dpiX, MidpointRounding.AwayFromZero)),
+            HeightPixels = Math.Max(1, (int)Math.Round(heightMm / 25.4d * dpiY, MidpointRounding.AwayFromZero))
+        };
+    }
+
+    private static (double X, double Y) ReadPia2RasterDpi(PlotterConfiguration config)
+    {
+        var resolution = config["res_color_mem"]?["resolution"];
+        return (
+            ReadPositiveNumber(resolution?.NodeMap, "effective_resolution_x", "addr_resolution_x", "phys_resolution_x"),
+            ReadPositiveNumber(resolution?.NodeMap, "effective_resolution_y", "addr_resolution_y", "phys_resolution_y"));
+    }
+
+    private static (double X, double Y) ReadPia3RasterDpi(JObject root)
+    {
+        var resolution = root["data"]?["res_color_mem"]?["resolution"] as JObject;
+        return (
+            ReadPositiveNumber(resolution, "effective_resolution_x", "addr_resolution_x", "phys_resolution_x"),
+            ReadPositiveNumber(resolution, "effective_resolution_y", "addr_resolution_y", "phys_resolution_y"));
+    }
+
+    private static double ReadPositiveNumber(
+        IReadOnlyDictionary<string, string>? values,
+        params string[] keys)
+    {
+        if (values != null)
+        {
+            foreach (var key in keys)
+            {
+                if (values.TryGetValue(key, out var raw)
+                    && double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+                    && value > 0d)
+                {
+                    return value;
+                }
+            }
+        }
+
+        return 100d;
+    }
+
+    private static double ReadPositiveNumber(JObject? values, params string[] keys)
+    {
+        if (values != null)
+        {
+            foreach (var key in keys)
+            {
+                var value = values.Value<double?>(key);
+                if (value > 0d)
+                {
+                    return value.Value;
+                }
+            }
+        }
+
+        return 100d;
+    }
+
+    private static JObject CreatePia3Description(PaperSpec paper)
+    {
+        var area = paper.Width * paper.Height;
+        var descName = MediaDescriptionName(paper);
+        return new JObject
+        {
+            ["caps_type"] = 2,
+            ["dimensional"] = true,
+            ["media_bounds_urx"] = paper.Width,
+            ["media_bounds_ury"] = paper.Height,
+            ["name"] = descName,
+            ["printable_area"] = area,
+            ["printable_bounds_llx"] = 0.0,
+            ["printable_bounds_lly"] = 0.0,
+            ["printable_bounds_urx"] = paper.Width,
+            ["printable_bounds_ury"] = paper.Height
+        };
+    }
+
+    private static JObject CreatePia3Size(PaperSpec paper) => new()
+    {
+        ["caps_type"] = 2,
+        ["landscape_mode"] = true,
+        ["localized_name"] = $"{paper.Name} ({FormatMm(paper.Width)} x {FormatMm(paper.Height)} mm)",
+        ["media_description_name"] = MediaDescriptionName(paper),
+        ["media_group"] = 15,
+        ["name"] = $"UserDefinedMetric {paper.Name} ({FormatMm(paper.Width)} x {FormatMm(paper.Height)}mm)"
+    };
+
+    private static string MediaDescriptionName(PaperSpec paper)
+    {
+        var area = paper.Width * paper.Height;
+        return $"UserDefinedMetric {paper.Name} Landscape {FormatMm(paper.Width)}W x {FormatMm(paper.Height)}H - (0, 0) x ({FormatPlain(paper.Width)}, {FormatPlain(paper.Height)}) ={FormatPlain(area)} mm";
+    }
+
+    private static void AddPia2MediaContainers(PlotterConfiguration config)
+    {
+        var caps = "{\n"
+            + "abilities=\"500005500500505555000005550000000550000500000500000\n"
+            + "caps_state=\"000000000000000000000000000000000000000000000000000\n"
+            + "ui_owner=\"11111111111111111111000\n"
+            + "size_max_x=5080.0\n"
+            + "size_max_y=5080.0\n}";
+
+        config.Add("mod", "").Add("media", caps);
+        config.Add("del", "").Add("media", caps);
+        var udm = config.Add("udm", "");
+        var media = udm.Add("media", caps);
+        var size = media.Add("size");
+        var description = media.Add("description");
+        var index = 0;
+        foreach (var paper in StandardUserPapers())
+        {
+            var id = index.ToString(CultureInfo.InvariantCulture);
+            size.Add(id, CreatePia2SizeText(id, paper));
+            description.Add(id, CreatePia2DescriptionText(id, paper));
+            index++;
+        }
+
+        config.Add("hidden", "").Add("media", caps);
+    }
+
+    private static void AddPia2RasterMediaContainers(PlotterConfiguration config, double dpiX, double dpiY)
+    {
+        const string caps = "{\n"
+            + "abilities=\"500505500500505555000005550000000550000500000500555\n"
+            + "caps_state=\"000000000000000000000000000000000000000000000000000\n"
+            + "ui_owner=\"11111111111111111111110\n"
+            + "size_max_x=320000.0\n"
+            + "size_max_y=320000.0\n"
+            + "max_roll_height=320000.0\n}";
+
+        config.Add("mod", "").Add("media", caps);
+        config.Add("del", "").Add("media", caps);
+        var udm = config.Add("udm", "");
+        udm.Add("calibration", "{\n_x=1.0\n_y=1.0\n}");
+        var media = udm.Add("media", caps);
+        var size = media.Add("size");
+        var description = media.Add("description");
+        var index = 0;
+        foreach (var paper in RasterUserPapers(dpiX, dpiY))
+        {
+            var id = index.ToString(CultureInfo.InvariantCulture);
+            size.Add(id, CreatePia2RasterSizeText(id, paper));
+            description.Add(id, CreatePia2RasterDescriptionText(id, paper));
+            index++;
+        }
+
+        config.Add("hidden", "").Add("media", caps);
+    }
+
+    private static string CreatePia2RasterSizeText(string id, RasterPaperSpec paper)
+    {
+        var width = paper.WidthPixels;
+        var height = paper.HeightPixels;
+        return id + "{\n"
+            + "caps_type=2\n"
+            + $"name=\"UserDefinedRaster ({FormatPixels(width)} x {FormatPixels(height)}Pixels)\n"
+            + $"localized_name=\"{paper.Name} ({FormatPixels(width)} x {FormatPixels(height)} Pixels)\n"
+            + $"media_description_name=\"{RasterMediaDescriptionName(paper)}\n"
+            + "media_group=16\n"
+            + $"landscape_mode={(width >= height ? "TRUE" : "FALSE")}\n}}";
+    }
+
+    private static string CreatePia2RasterDescriptionText(string id, RasterPaperSpec paper)
+    {
+        var printableWidth = Math.Max(0, paper.WidthPixels - 1);
+        var printableHeight = Math.Max(0, paper.HeightPixels - 1);
+        return id + "{\n"
+            + "caps_type=2\n"
+            + $"name=\"{RasterMediaDescriptionName(paper)}\n"
+            + $"media_bounds_urx={FormatNumber(paper.WidthPixels)}\n"
+            + $"media_bounds_ury={FormatNumber(paper.HeightPixels)}\n"
+            + "printable_bounds_llx=0.0\n"
+            + "printable_bounds_lly=0.0\n"
+            + $"printable_bounds_urx={FormatNumber(printableWidth)}\n"
+            + $"printable_bounds_ury={FormatNumber(printableHeight)}\n"
+            + $"printable_area={FormatNumber((double)printableWidth * printableHeight)}\n"
+            + "dimensional=FALSE\n}";
+    }
+
+    private static void AddPia3RasterUserMedia(JObject data, double dpiX, double dpiY)
+    {
+        var mediaCaps = CreateRasterMediaCaps();
+        data["mod"] = new JObject { ["media"] = mediaCaps.DeepClone() };
+        data["del"] = new JObject { ["media"] = mediaCaps.DeepClone() };
+        data["hidden"] = new JObject { ["media"] = mediaCaps.DeepClone() };
+
+        var descriptions = new JObject();
+        var sizes = new JObject();
+        var index = 0;
+        foreach (var paper in RasterUserPapers(dpiX, dpiY))
+        {
+            var id = index.ToString(CultureInfo.InvariantCulture);
+            descriptions[id] = CreatePia3RasterDescription(paper);
+            sizes[id] = CreatePia3RasterSize(paper);
+            index++;
+        }
+
+        var udmMedia = (JObject)mediaCaps.DeepClone();
+        udmMedia["description"] = descriptions;
+        udmMedia["size"] = sizes;
+        data["udm"] = new JObject
+        {
+            ["calibration"] = new JObject { ["_x"] = 1.0, ["_y"] = 1.0 },
+            ["media"] = udmMedia
+        };
+    }
+
+    private static JObject CreateRasterMediaCaps() => new()
+    {
+        ["abilities"] = "500505500500505555000005550000000550000500000500555",
+        ["caps_state"] = "000000000000000000000000000000000000000000000000000",
+        ["ui_owner"] = "11111111111111111111110",
+        ["size_max_x"] = 320000.0,
+        ["size_max_y"] = 320000.0,
+        ["max_roll_height"] = 320000.0
+    };
+
+    private static JObject CreatePia3RasterSize(RasterPaperSpec paper) => new()
+    {
+        ["caps_type"] = 2,
+        ["name"] = $"UserDefinedRaster ({FormatPixels(paper.WidthPixels)} x {FormatPixels(paper.HeightPixels)}Pixels)",
+        ["localized_name"] = $"{paper.Name} ({FormatPixels(paper.WidthPixels)} x {FormatPixels(paper.HeightPixels)} Pixels)",
+        ["media_description_name"] = RasterMediaDescriptionName(paper),
+        ["media_group"] = 16,
+        ["landscape_mode"] = paper.WidthPixels >= paper.HeightPixels
+    };
+
+    private static JObject CreatePia3RasterDescription(RasterPaperSpec paper)
+    {
+        var printableWidth = Math.Max(0, paper.WidthPixels - 1);
+        var printableHeight = Math.Max(0, paper.HeightPixels - 1);
+        return new JObject
+        {
+            ["caps_type"] = 2,
+            ["name"] = RasterMediaDescriptionName(paper),
+            ["media_bounds_urx"] = paper.WidthPixels,
+            ["media_bounds_ury"] = paper.HeightPixels,
+            ["printable_bounds_llx"] = 0.0,
+            ["printable_bounds_lly"] = 0.0,
+            ["printable_bounds_urx"] = printableWidth,
+            ["printable_bounds_ury"] = printableHeight,
+            ["printable_area"] = (double)printableWidth * printableHeight,
+            ["dimensional"] = false
+        };
+    }
+
+    private static string RasterMediaDescriptionName(RasterPaperSpec paper)
+    {
+        var width = paper.WidthPixels;
+        var height = paper.HeightPixels;
+        var orientation = width >= height ? "Landscape" : "Portrait";
+        return $"UserDefinedRaster {orientation} {FormatPixels(width)}W x {FormatPixels(height)}H - "
+            + $"(0, 0) x ({Math.Max(0, width - 1)}, {Math.Max(0, height - 1)}) ={(long)width * height} Pixels";
+    }
+
+    private static string CreatePia2SizeText(string id, PaperSpec paper)
+    {
+        return id + "{\n"
+            + "caps_type=2\n"
+            + $"name=\"UserDefinedMetric {paper.Name} ({FormatMm(paper.Width)} x {FormatMm(paper.Height)}mm)\n"
+            + $"localized_name=\"{paper.Name} ({FormatMm(paper.Width)} x {FormatMm(paper.Height)} mm)\n"
+            + $"media_description_name=\"{MediaDescriptionName(paper)}\n"
+            + "media_group=15\n"
+            + "landscape_mode=TRUE\n}";
+    }
+
+    private static string CreatePia2DescriptionText(string id, PaperSpec paper)
+    {
+        return id + "{\n"
+            + "caps_type=2\n"
+            + $"name=\"{MediaDescriptionName(paper)}\n"
+            + $"media_bounds_urx={FormatNumber(paper.Width)}\n"
+            + $"media_bounds_ury={FormatNumber(paper.Height)}\n"
+            + "printable_bounds_llx=0.0\n"
+            + "printable_bounds_lly=0.0\n"
+            + $"printable_bounds_urx={FormatNumber(paper.Width)}\n"
+            + $"printable_bounds_ury={FormatNumber(paper.Height)}\n"
+            + $"printable_area={FormatNumber(paper.Width * paper.Height)}\n"
+            + "dimensional=TRUE\n}";
+    }
+
+    private static string FormatMm(double value) => value.ToString("0.00", CultureInfo.InvariantCulture);
+
+    private static string FormatPixels(int value) => value.ToString("0.00", CultureInfo.InvariantCulture);
+
+    private static string FormatPlain(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private static string FormatNumber(double value) => value.ToString("0.0#########", CultureInfo.InvariantCulture);
+
+    private static string FindPdfDriverPath()
+    {
+        try
+        {
+            var driverDirectory = GetSystemVariableString("ACADDRV");
+            if (Directory.Exists(driverDirectory))
+            {
+                return Directory.GetFiles(driverDirectory, "*.hdi")
+                    .FirstOrDefault(path => Path.GetFileName(path).IndexOf("pdfplot", StringComparison.OrdinalIgnoreCase) >= 0)
+                    ?? "";
+            }
+        }
+        catch
+        {
+        }
+
+        return "";
+    }
+
+    private static bool FileContentEquals(string source, string target)
+    {
+        try
+        {
+            var sourceInfo = new FileInfo(source);
+            var targetInfo = new FileInfo(target);
+            if (!sourceInfo.Exists || !targetInfo.Exists || sourceInfo.Length != targetInfo.Length)
+            {
+                return false;
+            }
+
+            using var sourceStream = File.OpenRead(source);
+            using var targetStream = File.OpenRead(target);
+            var sourceBuffer = new byte[8192];
+            var targetBuffer = new byte[8192];
+            while (true)
+            {
+                var sourceRead = sourceStream.Read(sourceBuffer, 0, sourceBuffer.Length);
+                var targetRead = targetStream.Read(targetBuffer, 0, targetBuffer.Length);
+                if (sourceRead != targetRead)
+                {
+                    return false;
+                }
+
+                if (sourceRead == 0)
+                {
+                    return true;
+                }
+
+                for (var i = 0; i < sourceRead; i++)
+                {
+                    if (sourceBuffer[i] != targetBuffer[i])
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool InstalledPlotterFilesMatch(
+        string sourcePc3,
+        string targetPc3,
+        string sourcePmp,
+        string targetPmp,
+        string plottersDirectory)
+    {
+        if (!IsValidPlotterFile(targetPc3) || !IsValidPlotterFile(targetPmp))
+        {
+            return false;
+        }
+
+        var driverPath = ReadDriverPath(Path.Combine(plottersDirectory, "DWG To PDF.pc3"));
+        return PlotterFileContentMatches(sourcePc3, targetPc3, targetPmp, driverPath)
+            && PlotterFileContentMatches(sourcePmp, targetPmp, targetPmp, driverPath);
+    }
+
+    private static bool PlotterFileContentMatches(string source, string target, string pmpPath, string driverPath)
+    {
+        try
+        {
+            var sourceRaw = File.ReadAllText(source);
+            var targetRaw = File.ReadAllText(target);
+            if (TryNormalizePia3Text(sourceRaw, pmpPath, driverPath, out var normalizedSource)
+                && TryNormalizePia3Text(targetRaw, pmpPath, driverPath, out var normalizedTarget))
+            {
+                return string.Equals(normalizedSource, normalizedTarget, StringComparison.Ordinal);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return FileContentEquals(source, target);
+    }
+
+    private static void NormalizeInstalledPlotterFiles(string plottersDirectory, string pc3Path, string pmpPath)
+    {
+        try
+        {
+            var driverPath = ReadDriverPath(Path.Combine(plottersDirectory, "DWG To PDF.pc3"));
+            NormalizePia3Meta(pc3Path, pmpPath, driverPath);
+            NormalizePia3Meta(pmpPath, pmpPath, driverPath);
+        }
+        catch
+        {
+            // Plotter normalization is a compatibility aid. A copied valid PC3/PMP should still be usable.
+        }
+    }
+
+    private static string ReadDriverPath(string pc3Path)
+    {
+        try
+        {
+            if (!File.Exists(pc3Path))
+            {
+                return "";
+            }
+
+            var raw = File.ReadAllText(pc3Path);
+            if (TryReadPia3Json(raw, out var root))
+                return root["data"]?["meta"]?["driver_pathname"]?.Value<string>() ?? "";
+
+            return new PlotterConfiguration(pc3Path).DriverPath ?? "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static void NormalizePia3Meta(string path, string pmpPath, string driverPath)
+    {
+        if (!File.Exists(path))
+        {
+            return;
+        }
+
+        var raw = File.ReadAllText(path);
+        if (!TryReadPia3Json(raw, out var root))
+        {
+            return;
+        }
+
+        var meta = root["data"]?["meta"] as JObject;
+        if (meta == null)
+        {
+            return;
+        }
+
+        meta["user_defined_model_pathname"] = pmpPath;
+        meta["user_defined_model_basename"] = Path.GetFileNameWithoutExtension(pmpPath);
+        if (!string.IsNullOrWhiteSpace(driverPath))
+        {
+            meta["driver_pathname"] = driverPath;
+        }
+
+        File.WriteAllText(path, "PIAFILEVERSION_3.0,json\n" + root.ToString(Formatting.Indented));
+    }
+
+    private static bool TryNormalizePia3Text(string raw, string pmpPath, string driverPath, out string normalized)
+    {
+        normalized = "";
+        if (!TryReadPia3Json(raw, out var root))
+        {
+            return false;
+        }
+
+        var meta = root["data"]?["meta"] as JObject;
+        if (meta == null)
+        {
+            return false;
+        }
+
+        meta["user_defined_model_pathname"] = pmpPath;
+        meta["user_defined_model_basename"] = Path.GetFileNameWithoutExtension(pmpPath);
+        if (!string.IsNullOrWhiteSpace(driverPath))
+        {
+            meta["driver_pathname"] = driverPath;
+        }
+
+        normalized = "PIAFILEVERSION_3.0,json\n" + root.ToString(Formatting.Indented);
+        return true;
+    }
+
+    private static bool TryReadPia3Json(string raw, out JObject root)
+    {
+        root = new JObject();
+        if (!raw.StartsWith("PIAFILEVERSION_3.0", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var jsonStart = raw.IndexOf('{');
+        if (jsonStart < 0)
+        {
+            return false;
+        }
+
+        root = JObject.Parse(raw.Substring(jsonStart));
+        return true;
+    }
+
+    private static string? FindBundledPlotterRoot()
+    {
+        foreach (var root in GetCandidateBaseDirectories())
+        {
+            var candidate = Path.Combine(root, "Plotters");
+            if (File.Exists(Path.Combine(candidate, "PIA2", PreferredPdfPlotter)))
+            {
+                return candidate;
+            }
+
+            candidate = Path.Combine(root, "resources", "acad", "Plotters");
+            if (File.Exists(Path.Combine(candidate, "PIA2", PreferredPdfPlotter)))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static string[] GetCandidateBaseDirectories()
+    {
+        var assemblyPath = Assembly.GetExecutingAssembly().Location;
+        var assemblyDirectory = string.IsNullOrWhiteSpace(assemblyPath)
+            ? AppDomain.CurrentDomain.BaseDirectory
+            : Path.GetDirectoryName(assemblyPath) ?? AppDomain.CurrentDomain.BaseDirectory;
+
+        return new[]
+        {
+            AppDomain.CurrentDomain.BaseDirectory,
+            assemblyDirectory,
+            Directory.GetCurrentDirectory()
+        };
+    }
+
+    public static string GetPlottersDirectory() => GetAutoCadPlotterDirectory();
+
+    /// <summary>
+
+
+
+    /// </summary>
+    private static string GetAutoCadPlotterDirectory()
+    {
+        var configuredDirectories = GetExistingPrinterConfigDirectories();
+        var roamableRoot = GetSystemVariableString("ROAMABLEROOTPREFIX");
+        var preferredPlotters = string.IsNullOrWhiteSpace(roamableRoot)
+            ? ""
+            : Path.Combine(roamableRoot, "Plotters");
+
+        if (!string.IsNullOrWhiteSpace(preferredPlotters))
+        {
+            foreach (var directory in configuredDirectories)
+            {
+                if (PathsEqual(directory, preferredPlotters))
+                    return Path.GetFullPath(directory);
+            }
+
+            foreach (var directory in configuredDirectories)
+            {
+                if (IsPathInsideDirectory(directory, roamableRoot))
+                    return directory;
+            }
+        }
+
+        if (configuredDirectories.Count > 0)
+            return configuredDirectories[0];
+
+
+        if (!string.IsNullOrWhiteSpace(preferredPlotters) && Directory.Exists(preferredPlotters))
+            return Path.GetFullPath(preferredPlotters);
+
+        return "";
+    }
+
+    /// <summary>
+
+    /// </summary>
+    private static IReadOnlyList<string> GetExistingPrinterConfigDirectories()
+    {
+        var directories = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var printerConfigPath = ReadPrinterConfigPathFromPreferences();
+        foreach (var configuredPath in ExpandPrinterConfigPaths(printerConfigPath))
+        {
+            if (!Directory.Exists(configuredPath))
+                continue;
+
+            try
+            {
+                var fullPath = Path.GetFullPath(configuredPath);
+                if (seen.Add(fullPath))
+                    directories.Add(fullPath);
+            }
+            catch
+            {
+
+            }
+        }
+
+        return directories;
+    }
+
+    /// <summary>
+
+
+    /// </summary>
+    public static IReadOnlyList<string> GetPlotStyleSearchDirectories()
+    {
+        var directories = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var stylePath = ReadPreferenceFilesPath("PrinterStyleSheetPath");
+        foreach (var configuredPath in ExpandPrinterConfigPaths(stylePath))
+        {
+            if (!Directory.Exists(configuredPath))
+                continue;
+
+            try
+            {
+                var fullPath = Path.GetFullPath(configuredPath);
+                if (seen.Add(fullPath))
+                    directories.Add(fullPath);
+            }
+            catch
+            {
+
+            }
+        }
+
+        return directories;
+    }
+
+    /// <summary>
+
+
+    /// </summary>
+    private static bool IsAllowedLaPlotterPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        var currentCadRoot = GetSystemVariableString("ROAMABLEROOTPREFIX");
+        if (IsPathInsideDirectory(path, currentCadRoot))
+            return true;
+
+        foreach (var directory in GetExistingPrinterConfigDirectories())
+        {
+            if (IsPathInsideDirectory(path, directory))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string ReadPrinterConfigPathFromPreferences()
+        => ReadPreferenceFilesPath("PrinterConfigPath");
+
+    /// <summary>
+
+    /// </summary>
+    private static string ReadPreferenceFilesPath(string propertyName)
+    {
+        try
+        {
+            var acadApplication = typeof(CadApp).InvokeMember(
+                "AcadApplication",
+                BindingFlags.GetProperty | BindingFlags.Static | BindingFlags.Public,
+                null,
+                null,
+                null);
+            if (acadApplication == null)
+                return "";
+
+            var preferences = acadApplication.GetType().InvokeMember(
+                "Preferences",
+                BindingFlags.GetProperty,
+                null,
+                acadApplication,
+                null);
+            if (preferences == null)
+                return "";
+
+            var files = preferences.GetType().InvokeMember(
+                "Files",
+                BindingFlags.GetProperty,
+                null,
+                preferences,
+                null);
+            if (files == null)
+                return "";
+
+            return files.GetType().InvokeMember(
+                       propertyName,
+                       BindingFlags.GetProperty,
+                       null,
+                       files,
+                       null)?.ToString()
+                   ?? "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static IEnumerable<string> ExpandPrinterConfigPaths(string configuredPaths)
+    {
+        if (string.IsNullOrWhiteSpace(configuredPaths))
+            yield break;
+
+        var roamableRoot = GetSystemVariableString("ROAMABLEROOTPREFIX");
+        foreach (var raw in configuredPaths.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var path = raw.Trim().Trim('"');
+            if (!string.IsNullOrWhiteSpace(roamableRoot))
+            {
+                path = System.Text.RegularExpressions.Regex.Replace(
+                    path,
+                    "%RoamableRootFolder%",
+                    _ => roamableRoot,
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            }
+
+            path = Environment.ExpandEnvironmentVariables(path);
+            if (!string.IsNullOrWhiteSpace(path))
+                yield return path;
+        }
+    }
+
+    private static string GetSystemVariableString(string name)
+    {
+        try
+        {
+            return CadApp.GetSystemVariable(name)?.ToString() ?? "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static bool CopyIfDifferent(string source, string target)
+    {
+        if (File.Exists(target))
+        {
+            var sourceInfo = new FileInfo(source);
+            var targetInfo = new FileInfo(target);
+            if (sourceInfo.Length == targetInfo.Length
+                && sourceInfo.LastWriteTimeUtc <= targetInfo.LastWriteTimeUtc.AddSeconds(1))
+            {
+                return false;
+            }
+        }
+
+        File.Copy(source, target, overwrite: true);
+        return true;
+    }
+}

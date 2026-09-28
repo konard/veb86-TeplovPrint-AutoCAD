@@ -1,0 +1,17 @@
+<Window x:Class="ZwcadBatchPlot.AboutDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:ZwcadBatchPlot"
+        Title="О программе Teplov Print"
+        Width="370" MinWidth="330"
+        SizeToContent="Height"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="ToolWindow"
+        FontFamily="Segoe UI"
+        FontSize="11"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        Background="{x:Static SystemColors.ControlBrush}">
+    <local:AboutControl x:Name="Control"/>
+</Window>

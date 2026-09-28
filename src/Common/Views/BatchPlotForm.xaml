@@ -1,0 +1,245 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:ZwcadBatchPlot"
+        x:Class="ZwcadBatchPlot.BatchPlotForm"
+        Title="Teplov Print — пакетная печать по форматам V1.0.0"
+        Width="900" Height="520"
+        MinWidth="720" MinHeight="460"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize"
+        FontFamily="Segoe UI"
+        FontSize="11"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        Background="{x:Static SystemColors.ControlBrush}">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="WpfUi.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <local:RowIndexConverter x:Key="RowIndexConverter" />
+            <local:DuplicateBrushConverter x:Key="DuplicateBrushConverter" />
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <DockPanel LastChildFill="True">
+        
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="8,3,0,3">
+        <Button x:Name="_sortSettingsButton" Content="Сортировка" MinWidth="80"
+                    Style="{StaticResource PluginButtonStyle}" Margin="0,0,4,0"
+                    Click="SortSettings_Click"
+                    ToolTip="Выбрать сортировку по номеру листа или расположению и задать направление обхода." />
+        <Button x:Name="_fileNameSettingsButton" Content="Имена файлов" MinWidth="100"
+                    Style="{StaticResource PluginButtonStyle}" Margin="0,0,4,0"
+                    Click="FileNameSettings_Click"
+                    ToolTip="Настроить шаблон имени файла, разрядность номера и другие параметры имён." />
+        <Button x:Name="_directorySettingsButton" Content="Настройки ведомости" MinWidth="130"
+                    Style="{StaticResource PluginButtonStyle}"
+                    Click="DirectorySettings_Click"
+                    ToolTip="Настроить ширину столбцов, высоту текста и другие параметры ведомости." />
+        <Button x:Name="_generalSettingsButton" Content="Основные настройки" MinWidth="132"
+                    Style="{StaticResource PluginButtonStyle}" Margin="4,0,0,0"
+                    Click="GeneralSettings_Click"
+                    ToolTip="Настроить допуск формата бумаги, путь сохранения и другие основные параметры." />
+        </StackPanel>
+
+        
+        <Border DockPanel.Dock="Bottom" Height="28"
+                Background="{x:Static SystemColors.ControlBrush}">
+            <TextBlock x:Name="_statusLabel" VerticalAlignment="Center"
+                       Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
+        </Border>
+
+        
+        <StackPanel DockPanel.Dock="Top" Margin="10,4,10,4">
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                <TextBlock Text="Источник форматов:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox x:Name="_frameSourceCombo" Width="250" IsEditable="False"
+                          VerticalContentAlignment="Center"
+                          SelectionChanged="FrameSource_SelectionChanged" />
+            </StackPanel>
+            
+            <WrapPanel>
+        <Button x:Name="_scanButton" Content="Сканировать чертёж" MinWidth="130"
+                        Style="{StaticResource PluginButtonStyle}" Margin="0,0,3,0"
+                        Click="ScanCurrentDrawing_Click"
+                        ToolTip="Найти форматы выбранного источника в текущем чертеже; результаты добавляются к текущему списку." />
+        <Button x:Name="_scanObjectsButton" Content="Сканировать выбор" MinWidth="120"
+                        Style="{StaticResource PluginButtonStyle}" Margin="0,0,3,0"
+                        Click="ScanSelectedObjects_Click"
+                        ToolTip="Вернуться в CAD и выбрать форматы; правой кнопкой можно выбрать область сканирования." />
+        <Button x:Name="_textRegionsButton" Content="Поля текста" MinWidth="100"
+                        Style="{StaticResource PluginButtonStyle}" Margin="0,0,3,0"
+                        Click="ConfigureTextRegions_Click"
+                        ToolTip="Для выбранной распознанной рамки задать резервные области Наименования и № листа. Эти области используются только если штатные поля рамки пусты." />
+        <Button x:Name="_changeFormatButton" Content="Изменить масштаб формата" MinWidth="170"
+                        Style="{StaticResource PluginButtonStyle}" Margin="0,0,3,0"
+                        Click="ChangeFormat_Click"
+                        ToolTip="Выбрать формат для выделенных листов и пересчитать масштаб по размерам каждого формата." />
+        <Button x:Name="_addFilesButton" Content="Печать из файлов" MinWidth="120"
+                        Style="{StaticResource PluginButtonStyle}" Margin="0,0,3,0"
+                        Click="AddDwgFiles_Click"
+                        ToolTip="Выбрать один или несколько DWG и добавить их в список пакетной печати." />
+                <Rectangle Width="1" Height="14" Fill="#CDCDCD"
+                           Margin="4,0,12,0" VerticalAlignment="Center" />
+        <Button x:Name="_clearButton" Content="Очистить список" MinWidth="106"
+                        Style="{StaticResource PluginButtonStyle}" Margin="0,0,3,0"
+                        Click="ClearJobs_Click"
+                        ToolTip="Очистить текущий список, не изменяя DWG и библиотеку рамок." />
+                <Rectangle Width="1" Height="14" Fill="#CDCDCD"
+                           Margin="4,0,12,0" VerticalAlignment="Center" />
+        <Button x:Name="_renumberButton" Content="Перенумеровать" MinWidth="110"
+                        Style="{StaticResource PluginButtonStyle}" Margin="0,0,3,0"
+                        Click="RenumberDrawingNumbers_Click"
+                        ToolTip="Отсортировать рамки по расположению и назначить номера с префиксом по порядку." />
+        <Button x:Name="_generateDirectoryButton" Content="Создать ведомость" MinWidth="120"
+                        Style="{StaticResource PluginButtonStyle}" Margin="0,0,3,0"
+                        Click="GenerateDrawingDirectory_Click"
+                        ToolTip="Указать базовую точку в CAD и создать ведомость чертежей." />
+            </WrapPanel>
+
+            
+            <Grid Margin="0,2,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="42" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="74" />
+                    <ColumnDefinition Width="116" />
+                    <ColumnDefinition Width="36" />
+                    <ColumnDefinition Width="226" />
+                    <ColumnDefinition Width="122" />
+                </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Вывод:" VerticalAlignment="Center" />
+                <TextBox x:Name="_outputDirectory" Grid.Column="1"
+                         VerticalContentAlignment="Center" Margin="0,0,8,0"
+                         TextChanged="OutputDirectory_TextChanged"
+                         LostFocus="OutputDirectory_LostFocus" />
+            <Button x:Name="_chooseOutputButton" Grid.Column="2" Content="Обзор..." MinWidth="84"
+                        Style="{StaticResource PluginButtonStyle}" Margin="0,0,6,0"
+                        Click="ChooseOutputDirectory_Click"
+                        ToolTip="Выбрать папку для выходных файлов." />
+            <TextBlock Grid.Column="3" Text="Формат:" VerticalAlignment="Center" />
+                <ComboBox x:Name="_outputFormatCombo" Grid.Column="4" IsEditable="False"
+                          VerticalContentAlignment="Center" Margin="0,0,10,0"
+                          SelectionChanged="OutputFormat_SelectionChanged" />
+                <TextBlock Grid.Column="5" Text="CTB:" VerticalAlignment="Center" />
+                <Grid Grid.Column="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="82" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="_styleCombo" Grid.Column="0" IsEditable="False"
+                              VerticalContentAlignment="Center" Margin="0,0,4,0"
+                              SelectionChanged="Style_SelectionChanged" />
+            <Button x:Name="_styleSettingsButton" Grid.Column="1" Content="Настроить"
+                            Style="{StaticResource PluginButtonStyle}" IsEnabled="False"
+                            Click="StyleSettings_Click"
+                            ToolTip="Открыть настройки выбранного стиля печати CTB." />
+                </Grid>
+            <Button x:Name="_printButton" Grid.Column="7" Content="Начать печать" MinWidth="112"
+                        Style="{StaticResource PluginButtonStyle}" Margin="6,2,0,0"
+                        HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                        Background="#0078D7" Foreground="White" BorderBrush="#005FAA"
+                        Click="PrintOrStop_Click"
+                        ToolTip="Печатать в PDF/DWF, экспортировать PNG/JPG или разделить на DWG." />
+            </Grid>
+
+            
+            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+            <TextBlock Text="Папка сохранения:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox x:Name="_savePathModeCombo" Width="210" IsEditable="False"
+                          VerticalContentAlignment="Center" Margin="0,0,8,0"
+                          SelectionChanged="SavePathMode_SelectionChanged" />
+            <CheckBox x:Name="_mergePdfCheckBox" Content="Объединить PDF" VerticalAlignment="Center"
+                          Margin="12,0,12,0"
+                          ToolTip="Объединить временные одностраничные PDF; закладки и группировка по формату задаются в настройках." />
+            <CheckBox x:Name="_leaveMarginCheckBox" Content="Поля по краям" VerticalAlignment="Center"
+                          Margin="12,0,12,0" Checked="LeaveMargin_CheckedChanged" Unchecked="LeaveMargin_CheckedChanged"
+                          ToolTip="Добавить поля заданного размера. Положительное значение увеличивает бумагу, отрицательное уменьшает масштаб содержимого." />
+                <ComboBox x:Name="_marginInput" Width="68" IsEditable="False"
+                          VerticalContentAlignment="Center" Margin="0,0,2,0"
+                          SelectionChanged="MarginInput_SelectionChanged" />
+                <TextBlock Text="mm" VerticalAlignment="Center" Margin="3,0,8,0" />
+            </StackPanel>
+        </StackPanel>
+
+        
+        <DataGrid x:Name="_grid" Style="{StaticResource PluginGridStyle}"
+                  Margin="0"
+                  BeginningEdit="Grid_BeginningEdit"
+                  CellEditEnding="Grid_CellEditEnding"
+                  LoadingRow="Grid_LoadingRow"
+                  MouseDoubleClick="Grid_MouseDoubleClick"
+                  PreviewMouseLeftButtonDown="Grid_PreviewMouseLeftButtonDown"
+                  PreviewMouseRightButtonDown="Grid_PreviewMouseRightButtonDown"
+                  SelectionChanged="Grid_SelectionChanged"
+                  ContextMenuOpening="Grid_ContextMenuOpening">
+            <DataGrid.Columns>
+                
+                <DataGridTemplateColumn Header="№" Width="52" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock VerticalAlignment="Center"
+                                       Text="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=Header}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Просмотр" Width="80" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                                <Button Content="Просмотр" Padding="6,0" MinHeight="20"
+                                    Click="PreviewButton_Click" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn x:Name="_printColumn" Header="Печать" Width="64">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      IsChecked="{Binding Selected, UpdateSourceTrigger=PropertyChanged}"
+                                      Click="PrintCheck_Click" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn x:Name="_outputNameColumn" Header="Имя PDF"
+                                    Binding="{Binding DisplayOutputFileName}" Width="220" IsReadOnly="True" />
+                <DataGridTextColumn x:Name="_drawingNumberColumn" Header="№ листа" Width="160"
+                                    Binding="{Binding DrawingNumber, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTipService.ToolTip="Дважды щёлкните для изменения номера; если DWG открыт, значение будет записано обратно в CAD.">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="VerticalAlignment" Value="Center" />
+                            <Setter Property="Foreground"
+                                    Value="{Binding DrawingNumber, Converter={StaticResource DuplicateBrushConverter}, ConverterParameter=DrawingNumber}" />
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+                <DataGridTextColumn x:Name="_titleColumn" Header="Наименование" Width="240"
+                                    Binding="{Binding Title, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTipService.ToolTip="Дважды щёлкните для изменения наименования; если DWG открыт, значение будет записано обратно в CAD.">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="VerticalAlignment" Value="Center" />
+                            <Setter Property="Foreground"
+                                    Value="{Binding Title, Converter={StaticResource DuplicateBrushConverter}, ConverterParameter=Title}" />
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+                <DataGridTextColumn Header="Формат" Binding="{Binding PaperName}" Width="82" IsReadOnly="True" />
+                <DataGridTextColumn Header="Масштаб" Binding="{Binding ScaleText}" Width="82" IsReadOnly="True" />
+                <DataGridTextColumn Header="Дата" Binding="{Binding Date}" Width="90" IsReadOnly="True" />
+                <DataGridTextColumn Header="Редакция" Binding="{Binding Revision}" Width="70" IsReadOnly="True" />
+                <DataGridTextColumn Header="Стадия" Binding="{Binding Phase}" Width="90" IsReadOnly="True" />
+            </DataGrid.Columns>
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem x:Name="_moveToFirstItem" Header="Переместить в начало" Click="MoveToFirst_Click" />
+                    <MenuItem x:Name="_changeFormatItem" Header="Изменить масштаб формата" Click="ChangeFormat_Click" />
+                    <MenuItem x:Name="_markNotPrintItem" Header="Не печатать" Click="MarkNotPrint_Click" />
+                    <MenuItem x:Name="_deleteItem" Header="Удалить" Click="DeleteHighlighted_Click" />
+                </ContextMenu>
+            </DataGrid.ContextMenu>
+        </DataGrid>
+    </DockPanel>
+</Window>

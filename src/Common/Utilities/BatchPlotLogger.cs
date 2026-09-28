@@ -1,0 +1,39 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+
+namespace ZwcadBatchPlot;
+
+public static class BatchPlotLogger
+{
+    /// <summary>
+
+    /// </summary>
+    public static bool IsEnabled => AppSettingsStore.Load().GeneratePrintLog;
+
+    public static string LogDirectory =>
+#if AUTOCAD
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AcadBatchPlot", "Logs");
+#else
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ZwcadBatchPlot", "Logs");
+#endif
+
+    public static string SaveRunLog(IEnumerable<string> lines)
+    {
+        if (!IsEnabled)
+        {
+            return "";
+        }
+
+        Directory.CreateDirectory(LogDirectory);
+        var path = Path.Combine(LogDirectory, "BatchPlot_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".log");
+        File.WriteAllLines(path, lines, Encoding.UTF8);
+        return path;
+    }
+
+    public static string Format(string level, string message)
+    {
+        return $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{level}] {message}";
+    }
+}

@@ -1,0 +1,78 @@
+﻿<Window x:Class="ZwcadBatchPlot.BatchPrintProgressWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Ход пакетной печати"
+        Width="460" MinWidth="400" MinHeight="210"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        ShowInTaskbar="True"
+        Topmost="True"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="ToolWindow"
+        FontFamily="Segoe UI"
+        FontSize="11"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        Background="{x:Static SystemColors.ControlBrush}">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="WpfUi.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid Margin="12,10,12,10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="_titleText"
+                   Grid.Row="0"
+                   FontWeight="SemiBold"
+                   Text="Выполняется пакетная печать…" />
+
+        <Grid Grid.Row="1" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ProgressBar x:Name="_progressBar"
+                         Grid.Column="0"
+                         Height="18"
+                         Minimum="0"
+                         Maximum="100"
+                         Value="0" />
+            <TextBlock x:Name="_countText"
+                       Grid.Column="1"
+                       Margin="10,0,0,0"
+                       VerticalAlignment="Center"
+                       Text="0 / 0" />
+        </Grid>
+
+        <TextBlock x:Name="_detailText"
+                   Grid.Row="2"
+                   Margin="0,8,0,0"
+                   MinHeight="32"
+                   TextWrapping="Wrap"
+                   TextTrimming="CharacterEllipsis"
+                   VerticalAlignment="Top"
+                   Foreground="DimGray"
+                   Text="Подготовка…" />
+
+        <Button x:Name="_stopButton"
+                Grid.Row="3"
+                HorizontalAlignment="Right"
+                MinWidth="76"
+                Margin="0,10,0,0"
+                Content="Остановить"
+                Style="{StaticResource PluginButtonStyle}"
+                Background="#C82828"
+                BorderBrush="#A01E1E"
+                Foreground="White"
+                Click="Stop_Click" />
+    </Grid>
+</Window>

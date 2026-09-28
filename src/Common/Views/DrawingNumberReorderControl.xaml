@@ -1,0 +1,103 @@
+<UserControl x:Class="ZwcadBatchPlot.DrawingNumberReorderControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="Segoe UI" FontSize="11">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="WpfUi.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <Grid Margin="12,10,12,8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="28"/>
+            <RowDefinition Height="28"/>
+            <RowDefinition Height="48"/>
+            <RowDefinition Height="28"/>
+            <RowDefinition Height="48"/>
+            <RowDefinition Height="28"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="72"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="Префикс" VerticalAlignment="Center"/>
+        <TextBox Grid.Row="0" Grid.Column="1" x:Name="PrefixBox" Text=""
+                 Width="160" MinHeight="22" HorizontalAlignment="Left"
+                 VerticalContentAlignment="Center"
+                 TextChanged="OnTextChanged"/>
+
+        
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="Суффикс" VerticalAlignment="Center"/>
+        <TextBox Grid.Row="1" Grid.Column="1" x:Name="SuffixBox" Text=""
+                 Width="160" MinHeight="22" HorizontalAlignment="Left"
+                 VerticalContentAlignment="Center"
+                 TextChanged="OnTextChanged"/>
+
+        
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="Начальный №" VerticalAlignment="Center"/>
+        <Border Grid.Row="2" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center"
+                BorderBrush="#FFABADB3" BorderThickness="1" Background="White"
+                Width="100" MinHeight="22">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="16"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="StartNumberBox" Text="1"
+                         Grid.Column="0" BorderThickness="0"
+                         VerticalContentAlignment="Center"
+                         PreviewTextInput="OnStartNumberPreviewTextInput"
+                         TextChanged="OnTextChanged"/>
+                <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <RepeatButton Grid.Row="0" Content="▲" FontSize="6"
+                                  BorderThickness="0" Background="#FFF0F0F0"
+                                  Click="OnStartNumberUp"/>
+                    <RepeatButton Grid.Row="1" Content="▼" FontSize="6"
+                                  BorderThickness="0" Background="#FFF0F0F0"
+                                  Click="OnStartNumberDown"/>
+                </Grid>
+            </Grid>
+        </Border>
+
+        
+        <TextBlock Grid.Row="3" Grid.Column="0" Text="Разрядов" VerticalAlignment="Center"/>
+        <ComboBox Grid.Row="3" Grid.Column="1" x:Name="DigitsCombo"
+                  Width="100" MinHeight="22" HorizontalAlignment="Left"
+                  VerticalContentAlignment="Center"
+                  SelectionChanged="OnDigitsChanged"/>
+
+        
+        <TextBlock Grid.Row="4" Grid.Column="0" Text="Порядок" VerticalAlignment="Top" Margin="0,4,0,0"/>
+        <StackPanel Grid.Row="4" Grid.Column="1" VerticalAlignment="Center">
+            <RadioButton x:Name="TopToBottomRadio" GroupName="RenumberSpatialOrder" IsChecked="True"
+                         Content="Сверху вниз, слева направо" Margin="0,0,0,4"/>
+            <RadioButton x:Name="LeftToRightRadio" GroupName="RenumberSpatialOrder"
+                         Content="Слева направо, сверху вниз"/>
+        </StackPanel>
+
+        
+        <TextBlock Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" x:Name="PreviewLabel"
+                   VerticalAlignment="Center"
+                   Foreground="DimGray"/>
+
+        
+        <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
+                    HorizontalAlignment="Right" Orientation="Horizontal" Margin="0,8,0,0">
+            <Button Content="ОК" MinWidth="76" Style="{StaticResource PluginButtonStyle}"
+                    Click="OnOkClick" Margin="0,0,4,0"/>
+            <Button Content="Просмотр порядка" MinWidth="108" Style="{StaticResource PluginButtonStyle}"
+                    Click="OnPreviewClick" Margin="0,0,4,0"/>
+            <Button Content="Отмена" MinWidth="76" Style="{StaticResource PluginButtonStyle}"
+                    Click="OnCancelClick"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

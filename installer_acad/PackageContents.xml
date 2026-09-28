@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage SchemaVersion="1.0" AutodeskProduct="AutoCAD" Name="Teplov Print" AppVersion="1.0.0" ProductCode="{ae537d93-f446-41d3-97b7-b61d822cb6c4}" Description="Teplov Print for AutoCAD">
+  <CompanyDetails Name="Вячеслав Теплов" />
+  <Components>
+    <ComponentEntry AppName="TeplovPrintLegacy" AppType=".Net" ModuleName="./Contents/AutoCAD2015-2024/AcadBatchPlot.dll" LoadOnAutoCADStartup="True" LoadOnCommandInvocation="True">
+      <RuntimeRequirements OS="Win64" Platform="AutoCAD*" SeriesMin="R20.0" SeriesMax="R24.3" />
+      <Commands GroupName="TeplovPrint">
+        <Command Global="ZBP_SHOW_PANEL" Local="ZBP_SHOW_PANEL" />
+      </Commands>
+    </ComponentEntry>
+    <ComponentEntry AppName="TeplovPrintCore" AppType=".Net" ModuleName="./Contents/AutoCAD2025-2027/AcadBatchPlot.Core.dll" LoadOnAutoCADStartup="True" LoadOnCommandInvocation="True">
+      <RuntimeRequirements OS="Win64" Platform="AutoCAD*" SeriesMin="R25.0" SeriesMax="R25.2" />
+      <Commands GroupName="TeplovPrint">
+        <Command Global="ZBP_SHOW_PANEL" Local="ZBP_SHOW_PANEL" />
+      </Commands>
+    </ComponentEntry>
+  </Components>
+</ApplicationPackage>

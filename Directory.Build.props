@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    
+    <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
+    
+    <BaseIntermediateOutputPath>obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

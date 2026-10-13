@@ -57,10 +57,11 @@ Teplov Print — плагин для поиска форматов в черте
 
 ## Совместимость
 
-| Версия AutoCAD | Файл плагина |
+| Версия CAD | Файл плагина |
 | --- | --- |
-| AutoCAD 2015–2024 x64 | `AcadBatchPlot.dll` |
+| AutoCAD 2015–2024 x64 (в том числе AutoCAD 2021) | `AcadBatchPlot.dll` |
 | AutoCAD 2025–2027 x64 | `AcadBatchPlot.Core.dll` |
+| nanoCAD 24 x64 | `NcadBatchPlot.dll` |
 
 ## Установка
 
@@ -70,6 +71,15 @@ Teplov Print — плагин для поиска форматов в черте
 4. Откройте меню **Teplov** → **Пакетная печать**.
 
 Для ручной загрузки используйте команду `NETLOAD` и выберите DLL, подходящую вашей версии AutoCAD. При предупреждении безопасности добавьте папку плагина в `TRUSTEDPATHS` согласно правилам вашей организации.
+
+### Ручная установка без инсталлятора (AutoCAD 2021, nanoCAD 24)
+
+В каждом [выпуске](../../releases) есть архив `Teplov-Print-manual-install-v<версия>.zip`. Он устанавливается без прав администратора — все файлы размещаются только в профиле пользователя (`%APPDATA%`):
+
+- AutoCAD — `%APPDATA%\Autodesk\ApplicationPlugins\TeplovPrint.bundle`, плагин загружается автоматически;
+- nanoCAD 24 — `%APPDATA%\TeplovPrint\nanoCAD24\NcadBatchPlot.dll`, загрузка через `NETLOAD`/`APPLOAD`.
+
+Пошаговая инструкция — в файле `INSTALL.md` внутри архива ([installer_manual/INSTALL.md](installer_manual/INSTALL.md)).
 
 ## Основной порядок работы
 
@@ -94,7 +104,7 @@ Teplov Print — плагин для поиска форматов в черте
 
 ## Сборка
 
-Требуются Windows, .NET SDK из `global.json`, установленные reference assemblies AutoCAD и восстановленные NuGet-пакеты.
+Требуются Windows, .NET SDK из `global.json` и восстановленные NuGet-пакеты (reference assemblies AutoCAD и nanoCAD подключаются из NuGet).
 
 ```powershell
 dotnet build LA.BatchPlot.sln --configuration Debug
@@ -103,7 +113,10 @@ dotnet build LA.BatchPlot.sln --configuration Debug
 Результаты сборки:
 
 - `bin-acad/AcadBatchPlot.dll` — AutoCAD 2015–2024;
-- `bin-acad2025-2027/AcadBatchPlot.Core.dll` — AutoCAD 2025–2027.
+- `bin-acad2025-2027/AcadBatchPlot.Core.dll` — AutoCAD 2025–2027;
+- `bin-nanocad24/NcadBatchPlot.dll` — nanoCAD 24.
+
+Каждый push собирается в GitHub Actions (`.github/workflows/build.yml`): DLL для AutoCAD 2021 и nanoCAD 24 доступны как артефакты сборки. После изменения `<Version>` в `.csproj` и слияния в основную ветку автоматически публикуется выпуск `v<версия>` с ZIP-архивами.
 
 Инсталлятор собирается отдельной командой Inno Setup:
 

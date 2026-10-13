@@ -4,10 +4,15 @@
 
 Используйте сборку, соответствующую версии AutoCAD:
 
-- AutoCAD 2015–2024: `bin-acad/AcadBatchPlot.dll`;
-- AutoCAD 2025–2027: `bin-acad2025-2027/AcadBatchPlot.Core.dll`.
+- AutoCAD 2015–2024 (в том числе 2021): `bin-acad/AcadBatchPlot.dll`;
+- AutoCAD 2025–2027: `bin-acad2025-2027/AcadBatchPlot.Core.dll`;
+- nanoCAD 24: `bin-nanocad24/NcadBatchPlot.dll`.
 
 Не смешивайте DLL из разных папок в одной установке.
+
+## Установка в профиль пользователя (без инсталлятора)
+
+Архив выпуска `Teplov-Print-manual-install-v<версия>.zip` содержит DLL для AutoCAD и nanoCAD 24 с зависимостями, скрипты `install.cmd`/`uninstall.cmd` и инструкцию. Все файлы копируются только в `%APPDATA%` текущего пользователя, права администратора не нужны. Подробности — [installer_manual/INSTALL.md](../installer_manual/INSTALL.md).
 
 ## Ручная загрузка
 
@@ -15,11 +20,13 @@
 2. Выберите подходящую DLL.
 3. Запустите `ZBP_SHOW_PANEL`.
 
+В nanoCAD 24 выберите `NcadBatchPlot.dll` командой `NETLOAD` или `APPLOAD`; для загрузки при каждом запуске добавьте DLL в список автозагрузки окна `APPLOAD`.
+
 Если AutoCAD выводит предупреждение безопасности, добавьте папку сборки в доверенные пути AutoCAD (`TRUSTEDPATHS`) либо подтвердите загрузку согласно политике организации.
 
 ## Автозагрузка
 
-После ручной загрузки выполните `ZBP_INSTALL_AUTOLOAD`. Плагин создаст запись автозагрузки только для текущей версии AutoCAD.
+Для AutoCAD: после ручной загрузки выполните `ZBP_INSTALL_AUTOLOAD`. Плагин создаст запись автозагрузки только для текущей версии AutoCAD.
 
 Для отключения выполните `ZBP_UNINSTALL_AUTOLOAD`; уже загруженная DLL останется доступной до закрытия AutoCAD.
 

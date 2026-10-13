@@ -2,12 +2,18 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+#if NANOCAD
+using HostMgd.ApplicationServices;
+using Teigha.DatabaseServices;
+using CadApp = HostMgd.ApplicationServices.Application;
+#else
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 #if ACAD_CORE
 using CadApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 #else
 using CadApp = Autodesk.AutoCAD.ApplicationServices.Application;
+#endif
 #endif
 
 

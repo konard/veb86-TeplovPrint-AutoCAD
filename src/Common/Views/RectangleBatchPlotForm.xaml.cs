@@ -11,7 +11,13 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Threading;
-#if AUTOCAD
+#if NANOCAD
+using HostMgd.ApplicationServices;
+using Teigha.DatabaseServices;
+using HostMgd.EditorInput;
+using Teigha.Geometry;
+using CadApp = HostMgd.ApplicationServices.Application;
+#elif AUTOCAD
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;

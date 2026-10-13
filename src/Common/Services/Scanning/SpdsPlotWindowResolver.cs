@@ -1,5 +1,8 @@
 using System;
-#if AUTOCAD
+#if NANOCAD
+using Teigha.DatabaseServices;
+using Teigha.Geometry;
+#elif AUTOCAD
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 #else

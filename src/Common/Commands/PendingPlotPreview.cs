@@ -1,6 +1,9 @@
 using System;
 using System.Windows.Threading;
-#if AUTOCAD
+#if NANOCAD
+using HostMgd.ApplicationServices;
+using CadApp = HostMgd.ApplicationServices.Application;
+#elif AUTOCAD
 using Autodesk.AutoCAD.ApplicationServices;
 #if ACAD_CORE
 using CadApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;

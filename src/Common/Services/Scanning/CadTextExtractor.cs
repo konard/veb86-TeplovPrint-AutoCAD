@@ -6,6 +6,9 @@ using System.Text.RegularExpressions;
 #if ZWCAD
 using ZwSoft.ZwCAD.DatabaseServices;
 using ZwSoft.ZwCAD.Geometry;
+#elif NANOCAD
+using Teigha.DatabaseServices;
+using Teigha.Geometry;
 #else
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;

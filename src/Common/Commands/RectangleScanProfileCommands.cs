@@ -2,7 +2,11 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Text;
-#if AUTOCAD
+#if NANOCAD
+using HostMgd.ApplicationServices;
+using Teigha.Runtime;
+using CadApp = HostMgd.ApplicationServices.Application;
+#elif AUTOCAD
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.Runtime;
 #if ACAD_CORE

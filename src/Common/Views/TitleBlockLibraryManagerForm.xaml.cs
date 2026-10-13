@@ -10,7 +10,10 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
-#if AUTOCAD
+#if NANOCAD
+using Teigha.DatabaseServices;
+using CadApp = HostMgd.ApplicationServices.Application;
+#elif AUTOCAD
 using Autodesk.AutoCAD.DatabaseServices;
 #if ACAD_CORE
 using CadApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;

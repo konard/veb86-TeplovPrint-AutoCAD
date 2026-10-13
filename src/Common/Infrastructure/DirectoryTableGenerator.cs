@@ -1,7 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-#if AUTOCAD
+#if NANOCAD
+using HostMgd.ApplicationServices;
+using Teigha.Colors;
+using Teigha.DatabaseServices;
+using HostMgd.EditorInput;
+using Teigha.Geometry;
+#elif AUTOCAD
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;

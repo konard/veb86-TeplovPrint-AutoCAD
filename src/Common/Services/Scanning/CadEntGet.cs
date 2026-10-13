@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-#if AUTOCAD
+#if NANOCAD
+using Teigha.DatabaseServices;
+#elif AUTOCAD
 using Autodesk.AutoCAD.DatabaseServices;
 #else
 using ZwSoft.ZwCAD.DatabaseServices;

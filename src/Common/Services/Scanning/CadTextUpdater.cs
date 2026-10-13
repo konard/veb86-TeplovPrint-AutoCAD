@@ -8,6 +8,11 @@ using ZwSoft.ZwCAD.ApplicationServices;
 using ZwSoft.ZwCAD.DatabaseServices;
 using ZwSoft.ZwCAD.Geometry;
 using CadApp = ZwSoft.ZwCAD.ApplicationServices.Application;
+#elif NANOCAD
+using HostMgd.ApplicationServices;
+using Teigha.DatabaseServices;
+using Teigha.Geometry;
+using CadApp = HostMgd.ApplicationServices.Application;
 #elif ACAD_CORE
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;

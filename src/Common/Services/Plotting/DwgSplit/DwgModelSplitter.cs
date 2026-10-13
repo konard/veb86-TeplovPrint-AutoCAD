@@ -1,7 +1,10 @@
 using System;
 using System.IO;
 using System.Linq;
-#if AUTOCAD
+#if NANOCAD
+using HostMgd.ApplicationServices;
+using Teigha.DatabaseServices;
+#elif AUTOCAD
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 #else

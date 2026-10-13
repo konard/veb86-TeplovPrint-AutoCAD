@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-#if AUTOCAD
+#if NANOCAD
+using Teigha.DatabaseServices;
+#elif AUTOCAD
 using Autodesk.AutoCAD.DatabaseServices;
 #else
 using ZwSoft.ZwCAD.DatabaseServices;

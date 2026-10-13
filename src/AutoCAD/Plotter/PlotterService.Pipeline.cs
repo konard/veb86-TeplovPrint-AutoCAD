@@ -4,16 +4,26 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
+using PdfSharp.Pdf;
+using PdfSharp.Pdf.IO;
+#if NANOCAD
+using HostMgd.ApplicationServices;
+using Teigha.DatabaseServices;
+using Teigha.Geometry;
+using HostMgd.PlottingServices;
+using DbPlotType = Teigha.DatabaseServices.PlotType;
+using CadApp = HostMgd.ApplicationServices.Application;
+#else
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.PlottingServices;
-using PdfSharp.Pdf;
-using PdfSharp.Pdf.IO;
+using DbPlotType = Autodesk.AutoCAD.DatabaseServices.PlotType;
 #if ACAD_CORE
 using CadApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 #else
 using CadApp = Autodesk.AutoCAD.ApplicationServices.Application;
+#endif
 #endif
 
 
@@ -220,7 +230,7 @@ public static partial class PlotterService
 
 
         validator.SetPlotWindowArea(settings, window);
-        validator.SetPlotType(settings, Autodesk.AutoCAD.DatabaseServices.PlotType.Window);
+        validator.SetPlotType(settings, DbPlotType.Window);
         ConfigurePlotScale(validator, settings, window, job, deviceName, hideOuterFrame);
         validator.SetPlotRotation(settings, rotation);
 
@@ -278,7 +288,12 @@ public static partial class PlotterService
             progress?.OnBeginSheet();
             sheetStarted = progress != null;
 
+#if NANOCAD
+            // nanoCAD: PlotPageInfo does not implement IDisposable.
+            var pageInfo = new PlotPageInfo();
+#else
             using var pageInfo = new PlotPageInfo();
+#endif
             engine.BeginPage(pageInfo, info, true, null);
             pageStarted = true;
             engine.BeginGenerateGraphics(null);
@@ -390,7 +405,12 @@ public static partial class PlotterService
             plotStarted = true;
             engine.BeginDocument(plotInfo, documentName, null, 1, false, null);
             documentStarted = true;
+#if NANOCAD
+            // nanoCAD: PlotPageInfo does not implement IDisposable.
+            var pageInfo = new PlotPageInfo();
+#else
             using var pageInfo = new PlotPageInfo();
+#endif
             engine.BeginPage(pageInfo, plotInfo, true, null);
             pageStarted = true;
             engine.BeginGenerateGraphics(null);

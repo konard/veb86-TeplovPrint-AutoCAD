@@ -1,6 +1,9 @@
 using System;
 using System.Linq;
-#if AUTOCAD
+#if NANOCAD
+using HostMgd.EditorInput;
+using Teigha.Geometry;
+#elif AUTOCAD
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 #else

@@ -4,8 +4,12 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Security;
-using Autodesk.AutoCAD.DatabaseServices;
 using Microsoft.Win32;
+#if NANOCAD
+using Teigha.DatabaseServices;
+#else
+using Autodesk.AutoCAD.DatabaseServices;
+#endif
 
 namespace ZwcadBatchPlot;
 

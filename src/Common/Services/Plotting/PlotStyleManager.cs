@@ -6,7 +6,11 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-#if AUTOCAD
+#if NANOCAD
+using Teigha.DatabaseServices;
+using HostMgd.PlottingServices;
+using CadApp = HostMgd.ApplicationServices.Application;
+#elif AUTOCAD
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.PlottingServices;
 #if ACAD_CORE

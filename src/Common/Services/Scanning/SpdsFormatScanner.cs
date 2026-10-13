@@ -2,7 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-#if AUTOCAD
+#if NANOCAD
+using HostMgd.ApplicationServices;
+using Teigha.DatabaseServices;
+using Teigha.Geometry;
+#elif AUTOCAD
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;

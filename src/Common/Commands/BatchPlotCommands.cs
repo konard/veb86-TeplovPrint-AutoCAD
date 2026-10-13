@@ -60,6 +60,24 @@ public sealed partial class BatchPlotCommands : IExtensionApplication
         PluginAssemblyResolver.Register();
 #endif
 
+#if NANOCAD
+        // nanoCAD: plotter and menu integration is AutoCAD-specific, it must not block loading the commands.
+        try
+        {
+            InitializeCadIntegration();
+        }
+        catch (System.Exception ex)
+        {
+            CadApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage(
+                "\nTeplov Print: не удалось настроить плоттеры или меню: " + ex.Message);
+        }
+#else
+        InitializeCadIntegration();
+#endif
+    }
+
+    private static void InitializeCadIntegration()
+    {
         var pdfInstall = AcadPlotterInstaller.InstallBundledPlotter();
 
         var pngInstall = AcadPlotterInstaller.InstallPngPlotter();

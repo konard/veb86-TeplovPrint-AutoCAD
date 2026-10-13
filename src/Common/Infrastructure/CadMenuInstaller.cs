@@ -2,6 +2,8 @@ using System;
 using System.Reflection;
 #if ZWCAD
 using CadApp = ZwSoft.ZwCAD.ApplicationServices.Application;
+#elif NANOCAD
+using CadApp = HostMgd.ApplicationServices.Application;
 #elif ACAD_CORE
 using CadApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 #else

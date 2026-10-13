@@ -7,11 +7,16 @@ using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PiaNO;
+#if NANOCAD
+using HostMgd.PlottingServices;
+using CadApp = HostMgd.ApplicationServices.Application;
+#else
 using Autodesk.AutoCAD.PlottingServices;
 #if ACAD_CORE
 using CadApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 #else
 using CadApp = Autodesk.AutoCAD.ApplicationServices.Application;
+#endif
 #endif
 
 namespace ZwcadBatchPlot;
@@ -211,8 +216,8 @@ public static class AcadPlotterInstaller
         try
         {
 
-            Autodesk.AutoCAD.PlottingServices.PlotConfigManager.RefreshList(
-                Autodesk.AutoCAD.PlottingServices.RefreshCode.RefreshPC3DevicesList);
+            PlotConfigManager.RefreshList(
+                RefreshCode.RefreshPC3DevicesList);
             s_devicesRefreshedThisSession = true;
         }
         catch

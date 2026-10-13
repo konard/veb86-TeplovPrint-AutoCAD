@@ -1,7 +1,9 @@
 using System;
 using System.ComponentModel;
 using System.Windows;
-#if AUTOCAD
+#if NANOCAD
+using CadApp = HostMgd.ApplicationServices.Application;
+#elif AUTOCAD
 #if ACAD_CORE
 using CadApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 #else

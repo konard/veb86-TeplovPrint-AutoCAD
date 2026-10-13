@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
-#if AUTOCAD
+#if NANOCAD
+using Teigha.DatabaseServices;
+#elif AUTOCAD
 using Autodesk.AutoCAD.DatabaseServices;
 #else
 using ZwSoft.ZwCAD.DatabaseServices;

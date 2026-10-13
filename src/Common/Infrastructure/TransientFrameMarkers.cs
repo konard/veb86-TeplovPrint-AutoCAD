@@ -1,6 +1,13 @@
 using System;
 using System.Collections.Generic;
-#if AUTOCAD
+#if NANOCAD
+using Teigha.Colors;
+using Teigha.DatabaseServices;
+using HostMgd.EditorInput;
+using Teigha.Geometry;
+using Teigha.GraphicsInterface;
+using Polyline = Teigha.DatabaseServices.Polyline;
+#elif AUTOCAD
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;

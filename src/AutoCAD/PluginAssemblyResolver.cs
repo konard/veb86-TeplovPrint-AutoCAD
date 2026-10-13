@@ -1,4 +1,4 @@
-#if ACAD_CORE
+#if ACAD_CORE || NANOCAD
 using System;
 using System.IO;
 using System.Reflection;
@@ -109,6 +109,9 @@ internal static class PluginAssemblyResolver
             || simpleName.StartsWith("accore", StringComparison.OrdinalIgnoreCase)
             || simpleName.StartsWith("acdb", StringComparison.OrdinalIgnoreCase)
             || simpleName.StartsWith("acmgd", StringComparison.OrdinalIgnoreCase)
+            || simpleName.StartsWith("hostmgd", StringComparison.OrdinalIgnoreCase)
+            || simpleName.StartsWith("hostdbmgd", StringComparison.OrdinalIgnoreCase)
+            || simpleName.StartsWith("Teigha", StringComparison.OrdinalIgnoreCase)
             || simpleName.Equals("netstandard", StringComparison.OrdinalIgnoreCase)
             || simpleName.Equals("mscorlib", StringComparison.OrdinalIgnoreCase);
     }

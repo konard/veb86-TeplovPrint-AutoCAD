@@ -2,7 +2,11 @@ using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-#if AUTOCAD
+#if NANOCAD
+using HostMgd.ApplicationServices;
+using HostMgd.EditorInput;
+using CadApp = HostMgd.ApplicationServices.Application;
+#elif AUTOCAD
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.EditorInput;
 #if ACAD_CORE

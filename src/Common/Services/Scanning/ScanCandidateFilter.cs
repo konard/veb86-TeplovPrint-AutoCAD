@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
-#if AUTOCAD
+#if NANOCAD
+using Teigha.DatabaseServices;
+using HostMgd.EditorInput;
+#elif AUTOCAD
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 #else

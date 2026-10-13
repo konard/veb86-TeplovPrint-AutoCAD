@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("AutoCAD", "AutoCAD2025", "All")]
+    [ValidateSet("AutoCAD", "AutoCAD2025", "NanoCAD24", "All")]
     [string]$Target = "AutoCAD",
 
     [ValidateSet("Debug", "Release")]
@@ -23,6 +23,11 @@ $projects = [ordered]@{
         Project = "src\AcadBatchPlot.Core\AcadBatchPlot.Core.csproj"
         Output = "bin-acad2025*"
         Dll = "AcadBatchPlot.Core.dll"
+    }
+    NanoCAD24 = @{
+        Project = "src\NcadBatchPlot\NcadBatchPlot.csproj"
+        Output = "bin-nanocad24"
+        Dll = "NcadBatchPlot.dll"
     }
 }
 

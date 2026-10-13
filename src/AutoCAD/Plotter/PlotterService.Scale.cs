@@ -4,16 +4,24 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
+using PdfSharp.Pdf;
+using PdfSharp.Pdf.IO;
+#if NANOCAD
+using HostMgd.ApplicationServices;
+using Teigha.DatabaseServices;
+using Teigha.Geometry;
+using HostMgd.PlottingServices;
+using CadApp = HostMgd.ApplicationServices.Application;
+#else
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.PlottingServices;
-using PdfSharp.Pdf;
-using PdfSharp.Pdf.IO;
 #if ACAD_CORE
 using CadApp = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 #else
 using CadApp = Autodesk.AutoCAD.ApplicationServices.Application;
+#endif
 #endif
 
 

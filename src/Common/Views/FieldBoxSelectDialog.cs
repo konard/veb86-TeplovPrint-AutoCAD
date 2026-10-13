@@ -3,7 +3,10 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
-#if AUTOCAD
+#if NANOCAD
+using HostMgd.EditorInput;
+using Teigha.Geometry;
+#elif AUTOCAD
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 #else

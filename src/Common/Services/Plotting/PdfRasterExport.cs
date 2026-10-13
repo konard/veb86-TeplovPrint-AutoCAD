@@ -9,7 +9,9 @@ using System.Threading;
 using Docnet.Core;
 using Docnet.Core.Converters;
 using Docnet.Core.Models;
-#if AUTOCAD
+#if NANOCAD
+using HostMgd.ApplicationServices;
+#elif AUTOCAD
 using Autodesk.AutoCAD.ApplicationServices;
 #else
 using ZwSoft.ZwCAD.ApplicationServices;

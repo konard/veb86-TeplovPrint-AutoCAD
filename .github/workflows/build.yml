@@ -1,0 +1,135 @@
+name: Build and release
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build DLLs and installation ZIP
+    runs-on: windows-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content -LiteralPath src/AcadBatchPlot/AcadBatchPlot.csproj -Raw
+          $version = @($project.Project.PropertyGroup.Version | Where-Object { $_ })[0]
+          if ([string]::IsNullOrWhiteSpace($version)) { throw "<Version> was not found in AcadBatchPlot.csproj" }
+          if ('${{ github.ref_type }}' -eq 'tag' -and '${{ github.ref_name }}' -ne "v$version") {
+            throw "Tag ${{ github.ref_name }} does not match the project version v$version. Update <Version> in the .csproj files."
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version"
+
+      - name: Build AutoCAD 2015-2024 (2021), AutoCAD 2025-2027 and nanoCAD 24
+        shell: pwsh
+        run: ./scripts/build-dll.ps1 -Target All -Configuration Release
+
+      - name: Package release archives
+        shell: pwsh
+        run: ./scripts/package-release.ps1 -Version ${{ steps.version.outputs.version }}
+
+      - name: Verify release archives
+        shell: pwsh
+        run: ./scripts/test-release-package.ps1 -Version ${{ steps.version.outputs.version }}
+
+      - name: Upload AutoCAD 2021 DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeplovPrint-AutoCAD2021-dll
+          path: release/v${{ steps.version.outputs.version }}/AutoCAD2015-2024/
+          if-no-files-found: error
+
+      - name: Upload nanoCAD 24 DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeplovPrint-nanoCAD24-dll
+          path: release/v${{ steps.version.outputs.version }}/nanoCAD24/
+          if-no-files-found: error
+
+      - name: Upload release archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-archives
+          path: |
+            release/v${{ steps.version.outputs.version }}/*.zip
+            release/v${{ steps.version.outputs.version }}/release-manifest.txt
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    # Publishes automatically from the default branch (when <Version> was bumped), from v* tags or on manual run.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.ref_type == 'tag' ||
+      (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: v${{ needs.build.outputs.version }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Check whether the release already exists
+        id: check
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists; bump <Version> in the .csproj files to publish a new one."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download release archives
+        if: steps.check.outputs.publish == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-archives
+          path: dist
+
+      - name: Create release
+        if: steps.check.outputs.publish == 'true'
+        run: |
+          cat > notes.md <<EOF
+          ## Teplov Print $VERSION
+
+          | Файл | Назначение |
+          | --- | --- |
+          | \`Teplov-Print-manual-install-v$VERSION.zip\` | **ручная установка в профиль пользователя** для AutoCAD 2021 (2015–2027) и nanoCAD 24, инструкция \`INSTALL.md\` внутри |
+          | \`Teplov-Print-AutoCAD2015-2024-v$VERSION.zip\` | DLL для AutoCAD 2015–2024 (в том числе 2021) |
+          | \`Teplov-Print-AutoCAD2025-2027-v$VERSION.zip\` | DLL для AutoCAD 2025–2027 |
+          | \`Teplov-Print-nanoCAD24-v$VERSION.zip\` | DLL для nanoCAD 24 |
+
+          Контрольные суммы SHA256 — в \`release-manifest.txt\`.
+          EOF
+          gh release create "$TAG" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "Teplov Print $VERSION" \
+            --notes-file notes.md

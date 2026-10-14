@@ -45,7 +45,7 @@ internal static class NanoCadApiStubs
                     }
 
                     var body = pe.GetMethodBody(method.RelativeVirtualAddress);
-                    if (CallsLoggerReport(md, body.GetILBytes()))
+                    if (CallsLoggerReport(md, body.GetILBytes() ?? Array.Empty<byte>()))
                     {
                         result.Add(MemberKey(TypeName(md, typeHandle), md.GetString(method.Name),
                             method.DecodeSignature(SignatureNames.Instance, null)));

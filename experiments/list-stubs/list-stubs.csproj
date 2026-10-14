@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Prints nanoCAD 24 API members that are NOT_IMPLEMENTED stubs. Usage: dotnet run [apiDir] [filter] -->
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup><Compile Include="../../tests/NcadBatchPlot.Tests/NanoCadApiStubs.cs" /></ItemGroup>
+</Project>

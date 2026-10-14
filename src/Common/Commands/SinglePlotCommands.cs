@@ -98,7 +98,9 @@ public sealed partial class BatchPlotCommands
             var plottersDir = AcadPlotterInstaller.GetPlottersDirectory();
             var installedPlotter = Path.Combine(plottersDir, AcadPlotterInstaller.PreferredPdfPlotter);
             var installedPmp = Path.Combine(plottersDir, "PMP Files", "LA_pdf.pmp");
-            if (!File.Exists(installedPlotter) || !File.Exists(installedPmp))
+            // nanoCAD plots through its own PDF plotter, LA_pdf is not installed there (issue #5).
+            if (AcadPlotterInstaller.UsesBundledLaPlotters
+                && (!File.Exists(installedPlotter) || !File.Exists(installedPmp)))
             {
                 var installResult = AcadPlotterInstaller.InstallBundledPlotter();
                 if (!installResult.Installed)
@@ -136,7 +138,13 @@ public sealed partial class BatchPlotCommands
                     var paperW = scaleForm.PaperWidthMm;
                     var paperH = scaleForm.PaperHeightMm;
 
-
+#if NANOCAD
+                    // nanoCAD has no LA_pdf.pmp to register the paper in (issue #5):
+                    // the closest format of the nanoCAD PDF plotter is used and the frame is scaled to fit.
+                    isArbitraryPaper = false;
+                    var customPaperName = PaperSizeDetector.CustomPaperName;
+                    editor.WriteMessage($"\nПользовательская бумага {paperW:0.######} x {paperH:0.######} мм не регистрируется в nanoCAD; будет выбран ближайший формат PDF-плоттера nanoCAD.");
+#else
                     try
                     {
                         customPmpPath = Path.Combine(plottersDir, "PMP Files", "LA_pdf.pmp");
@@ -166,11 +174,13 @@ public sealed partial class BatchPlotCommands
                         throw new InvalidOperationException("Не удалось зарегистрировать пользовательскую бумагу. Печать остановлена, чтобы не использовать неверный формат.", ex);
                     }
 
+                    var customPaperName = customPaperRegistration.PaperName;
+#endif
                     candidates = new List<PaperDetection>
                     {
                         new()
                         {
-                            PaperName = customPaperRegistration.PaperName,
+                            PaperName = customPaperName,
                             PaperWidthMm = paperW,
                             PaperHeightMm = paperH,
                             ScaleValue = scale,
@@ -288,10 +298,16 @@ public sealed partial class BatchPlotCommands
             .Select(value => value?.ToString() ?? "")
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToList();
+#if NANOCAD
+        // LA_pdf.pc3 is an AutoCAD plotter: nanoCAD prints through its internal PDF plotter (issue #5).
+        var device = NullIfEmpty(AcadPlotterInstaller.ResolvePdfPlotDevice(devices))
+            ?? throw new InvalidOperationException("Не найден доступный PDF-плоттер." + AcadPlotterInstaller.PdfDeviceNotFoundHint);
+#else
         var device = FindPlotOption(devices, AcadPlotterInstaller.PreferredPdfPlotter)
             ?? FindPlotOption(devices, settings.LastPlotDevice)
             ?? devices.FirstOrDefault(value => value.IndexOf("PDF", StringComparison.OrdinalIgnoreCase) >= 0)
             ?? throw new InvalidOperationException("Не найден доступный PDF-плоттер.");
+#endif
 
         var style = PlotStyleManager.ResolvePreferredStyle(styles, settings.LastStyleSheet);
         return (device, style);
@@ -308,6 +324,8 @@ public sealed partial class BatchPlotCommands
         }
         AppSettingsStore.Save(settings);
     }
+
+    private static string? NullIfEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     private static string? FindPlotOption(System.Collections.Generic.IEnumerable<string> values, string expected)
     {

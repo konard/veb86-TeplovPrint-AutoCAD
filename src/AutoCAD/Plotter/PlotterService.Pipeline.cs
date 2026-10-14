@@ -140,10 +140,7 @@ public static partial class PlotterService
                     OverrideSettings = settings
                 };
 
-                new PlotInfoValidator
-                {
-                    MediaMatchingPolicy = MatchingPolicy.MatchEnabled
-                }.Validate(info);
+                ValidatePlotInfo(info);
 
 
 
@@ -153,10 +150,7 @@ public static partial class PlotterService
                 {
                     ConfigurePlotScale(validator, settings, window, job, deviceName, hideOuterFrame);
                     ResetAndCenterPlot(validator, settings);
-                    new PlotInfoValidator
-                    {
-                        MediaMatchingPolicy = MatchingPolicy.MatchEnabled
-                    }.Validate(info);
+                    ValidatePlotInfo(info);
                 }
 
                 return new ValidatedPlot
@@ -186,6 +180,23 @@ public static partial class PlotterService
         }
 
         throw failure;
+    }
+
+    /// <summary>
+    /// AutoCAD требует проверки PlotInfo перед печатью. В nanoCAD 24 PlotInfoValidator.Validate и
+    /// MediaMatchingPolicy не реализованы: вызов только показывает модальное окно "Mgd / NOT_IMPLEMENTED" (issue #3),
+    /// поэтому в nanoCAD проверка пропускается — параметры уже применены через PlotSettingsValidator.
+    /// </summary>
+    private static void ValidatePlotInfo(PlotInfo info)
+    {
+#if NANOCAD
+        TraceLog.Write("ValidatePlotInfo: skipped, PlotInfoValidator.Validate is not implemented in nanoCAD");
+#else
+        new PlotInfoValidator
+        {
+            MediaMatchingPolicy = MatchingPolicy.MatchEnabled
+        }.Validate(info);
+#endif
     }
 
     

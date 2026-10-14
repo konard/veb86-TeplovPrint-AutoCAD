@@ -287,6 +287,8 @@ internal static class PlotStyleManager
     
     private static string? TryResolveStylePathFromPlotConfig(string fileName)
     {
+#if !NANOCAD
+        // nanoCAD 24 does not implement PlotConfigManager.RefreshList (it only shows the modal "Mgd / NOT_IMPLEMENTED" dialog, issue #3).
         try
         {
             PlotConfigManager.RefreshList(RefreshCode.RefreshStyleList);
@@ -295,6 +297,7 @@ internal static class PlotStyleManager
         {
 
         }
+#endif
 
         try
         {

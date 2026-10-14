@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <PluginOutputDir>$(RepoRoot)bin-nanocad24\</PluginOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- Real nanoCAD 24 runtime assemblies (hostmgd.dll, hostdbmgd.dll): only inspected as metadata, never referenced. -->
+    <PackageReference Include="ModPlus.nanoCAD.API.24" Version="2.0.0" GeneratePathProperty="true" ExcludeAssets="all" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Builds bin-nanocad24\NcadBatchPlot.dll first; the tests load it the same way nanoCAD NETLOAD does. -->
+    <ProjectReference Include="..\..\src\NcadBatchPlot\NcadBatchPlot.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>NanoCadApiDir</_Parameter1>
+      <_Parameter2>$(PkgModPlus_nanoCAD_API_24)\lib\net6.0</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PluginPath</_Parameter1>
+      <_Parameter2>$(PluginOutputDir)NcadBatchPlot.dll</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PluginProjectPath</_Parameter1>
+      <_Parameter2>$(RepoRoot)src\NcadBatchPlot\NcadBatchPlot.csproj</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

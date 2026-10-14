@@ -45,6 +45,11 @@ jobs:
         shell: pwsh
         run: ./scripts/build-dll.ps1 -Target All -Configuration Release
 
+      - name: Test nanoCAD 24 plugin
+        shell: pwsh
+        timeout-minutes: 10
+        run: dotnet test tests/NcadBatchPlot.Tests/NcadBatchPlot.Tests.csproj -c Release --logger "console;verbosity=normal"
+
       - name: Package release archives
         shell: pwsh
         run: ./scripts/package-release.ps1 -Version ${{ steps.version.outputs.version }}

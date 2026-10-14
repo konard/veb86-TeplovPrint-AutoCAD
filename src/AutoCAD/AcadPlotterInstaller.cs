@@ -213,6 +213,11 @@ public static class AcadPlotterInstaller
         if (!force && s_devicesRefreshedThisSession)
             return;
 
+#if NANOCAD
+        // nanoCAD 24 does not implement PlotConfigManager.RefreshList (it only shows the modal "Mgd / NOT_IMPLEMENTED" dialog, issue #3).
+        TraceLog.Write("RefreshPlotterDevices: skipped, PlotConfigManager.RefreshList is not implemented in nanoCAD");
+        s_devicesRefreshedThisSession = true;
+#else
         try
         {
 
@@ -224,6 +229,7 @@ public static class AcadPlotterInstaller
         {
 
         }
+#endif
     }
 
     /// <summary>
@@ -378,6 +384,8 @@ public static class AcadPlotterInstaller
         if (string.IsNullOrWhiteSpace(deviceName))
             return "";
 
+#if !NANOCAD
+        // nanoCAD 24 does not implement PlotConfig.FullPath (it only shows the modal "Mgd / NOT_IMPLEMENTED" dialog, issue #3): search the plotter directory below.
         try
         {
             using var config = PlotConfigManager.SetCurrentConfig(Path.GetFileName(deviceName));
@@ -389,6 +397,7 @@ public static class AcadPlotterInstaller
         {
 
         }
+#endif
 
         var plottersDirectory = GetAutoCadPlotterDirectory();
         return string.IsNullOrWhiteSpace(plottersDirectory)

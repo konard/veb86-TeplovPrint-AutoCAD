@@ -36,6 +36,12 @@ public static class CadMenuInstaller
     /// </summary>
     public static void Install()
     {
+#if NANOCAD
+        // nanoCAD 24 does not implement Application.MenuBar / Application.MenuGroups: every call only shows the
+        // modal "Mgd / NOT_IMPLEMENTED / get_MenuBar" dialog and returns null (issue #3). The commands are available
+        // from the command line; a nanoCAD menu has to be added through the nanoCAD CUI (.cfg/.cuix) instead.
+        TraceLog.Write("CadMenuInstaller: skipped, menu API is not implemented in nanoCAD");
+#else
         try
         {
             ShowMenuBar();
@@ -133,6 +139,7 @@ public static class CadMenuInstaller
         {
             WriteMessage("\nНе удалось загрузить меню пакетной печати: " + ex.Message);
         }
+#endif
     }
 
     /// <summary>

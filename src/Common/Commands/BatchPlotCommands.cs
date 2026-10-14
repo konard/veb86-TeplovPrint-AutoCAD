@@ -49,6 +49,7 @@ public sealed partial class BatchPlotCommands : IExtensionApplication
 
     public void Initialize()
     {
+        TraceLog.Write("Initialize: " + typeof(BatchPlotCommands).Assembly.Location);
         LoadedAssemblyResolver.Register();
 
         if (IsCoreConsole())

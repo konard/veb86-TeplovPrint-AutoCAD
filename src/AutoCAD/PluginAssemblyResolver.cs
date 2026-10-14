@@ -66,12 +66,32 @@ internal static class PluginAssemblyResolver
             return null;
         }
 
-        var dir = Path.GetDirectoryName(typeof(PluginAssemblyResolver).Assembly.Location);
+        // nanoCAD NETLOAD loads the plugin with Assembly.LoadFile into an isolated AssemblyLoadContext,
+        // so a request for the plugin itself (e.g. WPF resolving "/NcadBatchPlot;V…;component/…xaml")
+        // reaches this handler. Loading the file again would create a second copy: nanoCAD would run
+        // Initialize() once more and WPF would read BAML from an assembly that does not own the window type.
+        var pluginAssembly = typeof(PluginAssemblyResolver).Assembly;
+        if (string.Equals(pluginAssembly.GetName().Name, simpleName, StringComparison.OrdinalIgnoreCase))
+        {
+            TraceLog.Write("PluginAssemblyResolver: " + requested.FullName + " -> already loaded plugin");
+            return pluginAssembly;
+        }
+
+        var dir = Path.GetDirectoryName(pluginAssembly.Location);
         if (!string.IsNullOrWhiteSpace(dir))
         {
             var path = Path.Combine(dir, simpleName + ".dll");
             if (File.Exists(path))
             {
+                var alreadyLoaded = FindLoadedFromPath(path);
+                if (alreadyLoaded != null)
+                {
+                    TraceLog.Write("PluginAssemblyResolver: " + requested.FullName + " -> already loaded " + path);
+                    return alreadyLoaded;
+                }
+
+                TraceLog.Write("PluginAssemblyResolver: " + requested.FullName + " -> LoadFrom " + path);
+
                 try
                 {
                     return Assembly.LoadFrom(path);
@@ -84,6 +104,30 @@ internal static class PluginAssemblyResolver
         }
 
         return FindLoaded(simpleName);
+    }
+
+
+    private static Assembly? FindLoadedFromPath(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        foreach (var loaded in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            try
+            {
+                if (!loaded.IsDynamic
+                    && !string.IsNullOrEmpty(loaded.Location)
+                    && string.Equals(Path.GetFullPath(loaded.Location), fullPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    return loaded;
+                }
+            }
+            catch
+            {
+
+            }
+        }
+
+        return null;
     }
 
 

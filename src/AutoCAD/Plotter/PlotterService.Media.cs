@@ -181,6 +181,9 @@ public static partial class PlotterService
         if (forceDeviceReload)
         {
             InvalidateMediaCatalog(deviceName);
+#if !NANOCAD
+            // nanoCAD 24 does not implement PlotConfigManager.RefreshList and PlotConfig.RefreshMediaNameList (it only shows the modal "Mgd / NOT_IMPLEMENTED" dialog, issue #3);
+            // the media list is re-read below through PlotSettingsValidator.RefreshLists.
             try
             {
 
@@ -191,6 +194,7 @@ public static partial class PlotterService
             {
 
             }
+#endif
         }
 
         var cacheKey = BuildMediaCatalogCacheKey(deviceName, layout.ModelType);

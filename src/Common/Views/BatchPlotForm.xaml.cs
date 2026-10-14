@@ -68,6 +68,7 @@ public sealed partial class BatchPlotForm : Window
     private string _lastLogPath = "";
     private string _mergedOutputPath = "";
     private string _dwfPlotDevice = "";
+    private string _pdfPlotDevice = AcadPlotterInstaller.UsesBundledLaPlotters ? AcadPlotterInstaller.PreferredPdfPlotter : "";
     private long _nextSortPriority;
     private HashSet<string> _duplicateDrawingNumbers = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _duplicateTitles = new(StringComparer.OrdinalIgnoreCase);
@@ -155,6 +156,7 @@ public sealed partial class BatchPlotForm : Window
                 .Select(item => item?.ToString() ?? "")
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .ToList();
+            _pdfPlotDevice = AcadPlotterInstaller.ResolvePdfPlotDevice(devices);
             _dwfPlotDevice = FindDwfPlotDevice(devices, dwfInstall.DeviceName);
             foreach (var style in PlotStyleManager.GetAvailableCtbStyles())
             {
@@ -175,6 +177,10 @@ public sealed partial class BatchPlotForm : Window
 
     private static string FindDwfPlotDevice(IReadOnlyList<string> devices, string installedPlotter)
     {
+#if NANOCAD
+        // LA_dwf.pc3 is not installed in nanoCAD (issue #5): use its own DWF plotter.
+        return PlotDeviceSelector.SelectDwfDevice(devices) ?? "";
+#else
         var preferred = new[]
         {
             installedPlotter,
@@ -196,6 +202,7 @@ public sealed partial class BatchPlotForm : Window
         return devices.FirstOrDefault(value => value.IndexOf("DWF", StringComparison.OrdinalIgnoreCase) >= 0
                                                && value.IndexOf("DWFx", StringComparison.OrdinalIgnoreCase) < 0)
                ?? installedPlotter;
+#endif
     }
 
 
@@ -2161,7 +2168,7 @@ public sealed partial class BatchPlotForm : Window
         var style = _styleCombo.SelectedItem?.ToString() ?? "";
         if (string.IsNullOrWhiteSpace(device))
         {
-        System.Windows.MessageBox.Show($"Не найдено устройство вывода {SelectedOutputFormat}.", "Пакетная печать", MessageBoxButton.OK, MessageBoxImage.Warning);
+        System.Windows.MessageBox.Show($"Не найдено устройство вывода {SelectedOutputFormat}.{(IsDwfOutput ? "" : AcadPlotterInstaller.PdfDeviceNotFoundHint)}", "Пакетная печать", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -2225,7 +2232,7 @@ public sealed partial class BatchPlotForm : Window
 
     private string SelectedPlotDevice => IsDwfOutput
         ? _dwfPlotDevice
-        : AcadPlotterInstaller.PreferredPdfPlotter;
+        : _pdfPlotDevice;
 
     private string? AutomaticOutputSubfolder => _savePathModeCombo.SelectedIndex == 1
                                                    && !string.IsNullOrWhiteSpace(SelectedOutputFormat)
@@ -2811,19 +2818,23 @@ public sealed partial class BatchPlotForm : Window
         return _lastLogPath;
     }
 
+    private string PdfDeviceHint => string.IsNullOrWhiteSpace(_pdfPlotDevice)
+        ? "PDF-плоттер не найден"
+        : "PDF через " + Path.GetFileNameWithoutExtension(_pdfPlotDevice);
+
     private void RefreshStatus()
     {
         var selected = _jobs.Count(x => x.Selected);
         var formatHint = IsDwgOutput
             ? "Разделение DWG"
-            : IsPdfOutput ? "PDF через LA_pdf" : $"Отдельные файлы {SelectedOutputFormat}";
+            : IsPdfOutput ? PdfDeviceHint : $"Отдельные файлы {SelectedOutputFormat}";
         var outputHint = $"{formatHint}; сохранение: {GetOutputLocationDescription()}.";
         _statusLabel.Text = $"Всего листов: {_jobs.Count}; выбрано: {selected}. {outputHint} Библиотека форматов: {TitleBlockLibraryStore.DefaultPath}";
     }
 
     private void SaveCurrentSettings()
     {
-        _settings.LastPlotDevice = AcadPlotterInstaller.PreferredPdfPlotter;
+        _settings.LastPlotDevice = _pdfPlotDevice;
         var style = PlotStyleManager.NormalizeStyleName(_styleCombo.SelectedItem?.ToString());
         if (!string.IsNullOrEmpty(style))
         {

@@ -150,7 +150,7 @@ public static class PdfRasterExport
 
             var results = PlotterService.PlotMany(
                 jobs,
-                AcadPlotterInstaller.PreferredPdfPlotter,
+                deviceName,
                 styleSheet,
                 currentDocument,
                 settings,

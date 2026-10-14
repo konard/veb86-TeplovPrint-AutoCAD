@@ -53,8 +53,57 @@ public static class AcadPlotterInstaller
 
     private static bool s_devicesRefreshedThisSession;
 
+    /// <summary>Overrides the automatically chosen nanoCAD PDF device, e.g. TEPLOV_PRINT_PDF_DEVICE=My PDF.pc3.</summary>
+    public const string PdfDeviceEnvironmentVariable = "TEPLOV_PRINT_PDF_DEVICE";
+
+    /// <summary>
+    /// False in nanoCAD: the bundled LA_*.pc3 are bound to Autodesk HDI drivers and are rebuilt from the
+    /// driver of AutoCAD's "DWG To PDF.pc3", which nanoCAD does not have (issue #5).
+    /// </summary>
+#if NANOCAD
+    public static bool UsesBundledLaPlotters => false;
+#else
+    public static bool UsesBundledLaPlotters => true;
+#endif
+
+    /// <summary>PDF device to plot with: LA_pdf.pc3 in AutoCAD, the internal PDF plotter in nanoCAD ("" if none).</summary>
+    public static string ResolvePdfPlotDevice(IReadOnlyList<string> devices)
+    {
+#if NANOCAD
+        var preferred = Environment.GetEnvironmentVariable(PdfDeviceEnvironmentVariable);
+        var device = PlotDeviceSelector.SelectPdfDevice(devices, preferred) ?? "";
+        TraceLog.Write("ResolvePdfPlotDevice: devices=[" + string.Join("; ", devices) + "], "
+                       + PdfDeviceEnvironmentVariable + "=" + (preferred ?? "") + ", selected=" + device);
+        return device;
+#else
+        return PreferredPdfPlotter;
+#endif
+    }
+
+    /// <summary>Appended to "device not found" messages for PDF/PNG/JPG output.</summary>
+    public static string PdfDeviceNotFoundHint => UsesBundledLaPlotters
+        ? ""
+        : " Встроенный PDF-плоттер nanoCAD не найден в списке устройств печати; укажите имя PDF-плоттера в переменной окружения "
+          + PdfDeviceEnvironmentVariable + " и перезапустите nanoCAD.";
+
+#if NANOCAD
+    private static InstallResult SkipBundledLaPlotter(string deviceName)
+    {
+        var result = new InstallResult
+        {
+            DeviceName = deviceName,
+            Message = deviceName + " не устанавливается в nanoCAD: используется встроенный плоттер nanoCAD."
+        };
+        TraceLog.Write("InstallPlotter: " + result.Message);
+        return result;
+    }
+#endif
+
     public static InstallResult InstallBundledPlotter()
     {
+#if NANOCAD
+        return SkipBundledLaPlotter(PreferredPdfPlotter);
+#else
         var result = new InstallResult
         {
             DeviceName = PreferredPdfPlotter
@@ -136,6 +185,7 @@ public static class AcadPlotterInstaller
             result.Message = ex.Message;
             return result;
         }
+#endif
     }
 
     public static InstallResult InstallPngPlotter()
@@ -152,6 +202,9 @@ public static class AcadPlotterInstaller
         string targetPlotterName,
         string targetPmpName)
     {
+#if NANOCAD
+        return SkipBundledLaPlotter(targetPlotterName);
+#else
         var result = new InstallResult
         {
             DeviceName = targetPlotterName
@@ -203,6 +256,7 @@ public static class AcadPlotterInstaller
             result.Message = ex.Message;
             return result;
         }
+#endif
     }
 
     /// <summary>
@@ -270,6 +324,9 @@ public static class AcadPlotterInstaller
 
     public static InstallResult InstallDwfPlotter()
     {
+#if NANOCAD
+        return SkipBundledLaPlotter(PreferredDwfPlotter);
+#else
         var result = new InstallResult
         {
             DeviceName = PreferredDwfPlotter
@@ -321,6 +378,7 @@ public static class AcadPlotterInstaller
             result.Message = ex.Message;
             return result;
         }
+#endif
     }
 
     /// <summary>
@@ -424,11 +482,21 @@ public static class AcadPlotterInstaller
         if (!string.Equals(fileName, PreferredPdfPlotter, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(fileName, PreferredDwfPlotter, StringComparison.OrdinalIgnoreCase))
         {
+#if NANOCAD
+            // nanoCAD plots through its own plotter: the LA_* text settings are not available, the plot goes on as is (issue #5).
+            result.Success = true;
+            result.Message = convertToGeometry
+                ? "Преобразование текста в геометрию недоступно для плоттера nanoCAD " + fileName + "; текст выводится настройками плоттера."
+                : "Для текущего плоттера не требуется восстанавливать параметры вывода текста.";
+            TraceLog.Write("ApplyTextGeometryMode: " + result.Message);
+            return result;
+#else
             result.Success = !convertToGeometry;
             result.Message = convertToGeometry
                 ? "Преобразование текста в геометрию поддерживается только плоттерами LA_pdf/LA_dwf этого плагина."
                 : "Для текущего плоттера не требуется восстанавливать параметры вывода текста.";
             return result;
+#endif
         }
 
         try

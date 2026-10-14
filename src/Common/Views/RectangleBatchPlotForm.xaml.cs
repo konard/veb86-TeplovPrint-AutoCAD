@@ -149,6 +149,7 @@ public sealed partial class RectangleBatchPlotForm : Window
     private string _sortMemberPath = "";
     private List<Row>? _pendingPrintToggleRows;
     private string _dwfPlotDevice = "";
+    private string _pdfPlotDevice = AcadPlotterInstaller.UsesBundledLaPlotters ? AcadPlotterInstaller.PreferredPdfPlotter : "";
     private bool _styleSelectionReady;
 
     private bool _hasAttributeIdentity;
@@ -524,7 +525,7 @@ public sealed partial class RectangleBatchPlotForm : Window
         var device = SelectedDevice();
         if (string.IsNullOrWhiteSpace(device))
         {
-            MessageBox.Show($"Не найдено устройство вывода для {SelectedOutputFormat}.", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show($"Не найдено устройство вывода для {SelectedOutputFormat}.{(IsDwfOutput ? "" : AcadPlotterInstaller.PdfDeviceNotFoundHint)}", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -1825,7 +1826,7 @@ public sealed partial class RectangleBatchPlotForm : Window
         var device = SelectedDevice();
         if (string.IsNullOrWhiteSpace(device))
         {
-            MessageBox.Show($"Не найдено устройство вывода для {SelectedOutputFormat}.", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show($"Не найдено устройство вывода для {SelectedOutputFormat}.{(IsDwfOutput ? "" : AcadPlotterInstaller.PdfDeviceNotFoundHint)}", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -2152,6 +2153,11 @@ public sealed partial class RectangleBatchPlotForm : Window
             .Select(item => item?.ToString() ?? "")
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToList();
+        _pdfPlotDevice = AcadPlotterInstaller.ResolvePdfPlotDevice(devices);
+#if NANOCAD
+        // LA_dwf.pc3 is not installed in nanoCAD (issue #5): use its own DWF plotter.
+        _dwfPlotDevice = PlotDeviceSelector.SelectDwfDevice(devices) ?? "";
+#else
         _dwfPlotDevice = FindPlotDevice(
             devices,
             dwfInstall.DeviceName,
@@ -2162,6 +2168,7 @@ public sealed partial class RectangleBatchPlotForm : Window
             "DWF6 ePlot.pc5",
             "ZWPLOT_DWF.pc5",
             "M_DWF.pc5");
+#endif
         foreach (var style in PlotStyleManager.GetAvailableCtbStyles())
         {
             _style.Items.Add(style);
@@ -2466,12 +2473,12 @@ public sealed partial class RectangleBatchPlotForm : Window
 
     private string SelectedDevice() => IsDwfOutput
         ? _dwfPlotDevice
-        : AcadPlotterInstaller.PreferredPdfPlotter;
+        : _pdfPlotDevice;
     private string SelectedStyle() => _style.SelectedItem?.ToString() ?? "";
 
     private void SaveCurrentPlotOptions()
     {
-        _settings.LastPlotDevice = AcadPlotterInstaller.PreferredPdfPlotter;
+        _settings.LastPlotDevice = _pdfPlotDevice;
         var style = PlotStyleManager.NormalizeStyleName(SelectedStyle());
         if (!string.IsNullOrEmpty(style))
         {

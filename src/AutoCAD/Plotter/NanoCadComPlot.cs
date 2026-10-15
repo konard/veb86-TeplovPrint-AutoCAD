@@ -130,8 +130,9 @@ internal static class NanoCadComPlot
     /// <summary>Prints the active layout to <paramref name="outputPath"/> with Plot.PlotToFile.</summary>
     public static void PlotToFile(object comDocument, string deviceName, string outputPath)
     {
+        // Plot.QuietErrorMode is not set: nanoCAD 24 does not implement its setter and shows the modal
+        // "COM / NOT_IMPLEMENTED / CPlotObj::put_QuietErrorMode" dialog on every sheet (issue #11).
         var plot = PlotObject(comDocument);
-        TrySet("Plot.QuietErrorMode = True", () => plot.QuietErrorMode = true);
 
         object? result = null;
         try
@@ -163,14 +164,15 @@ internal static class NanoCadComPlot
     private static dynamic ActiveLayout(object comDocument)
     {
         object? layout = null;
-        PlotStepException.Run("AcadDocument.ActiveLayout", () => layout = ((dynamic)comDocument).ActiveLayout);
+        // The first IDispatch call of every print and preview: repairs nanoCAD's unregistered type library (issue #11).
+        NanoCadComTypeLibrary.Run("AcadDocument.ActiveLayout", () => layout = ((dynamic)comDocument).ActiveLayout);
         return layout ?? throw new InvalidOperationException("nanoCAD не вернул активный лист документа (ActiveLayout).");
     }
 
     private static dynamic PlotObject(object comDocument)
     {
         object? plot = null;
-        PlotStepException.Run("AcadDocument.Plot", () => plot = ((dynamic)comDocument).Plot);
+        NanoCadComTypeLibrary.Run("AcadDocument.Plot", () => plot = ((dynamic)comDocument).Plot);
         return plot ?? throw new InvalidOperationException("nanoCAD не вернул объект печати документа (AcadDocument.Plot).");
     }
 

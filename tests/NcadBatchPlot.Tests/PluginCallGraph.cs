@@ -9,6 +9,7 @@ namespace NcadBatchPlot.Tests;
 /// Static call graph of the methods defined in the plugin itself (call, callvirt, newobj, ldftn),
 /// built from IL without loading the assembly. Lambdas are followed through their ldftn.
 /// Methods are keyed as "Namespace.Type::Name" (overloads are merged).
+/// Calls into other assemblies (e.g. nanoCAD's hostmgd/hostdbmgd) are leaf nodes keyed the same way.
 /// </summary>
 internal sealed class PluginCallGraph
 {
@@ -42,6 +43,11 @@ internal sealed class PluginCallGraph
                     if (target.Kind == HandleKind.MethodDefinition)
                     {
                         targets.Add(Key(md, (MethodDefinitionHandle)target));
+                    }
+                    else if (target.Kind == HandleKind.MemberReference
+                             && ExternalKey(md, (MemberReferenceHandle)target) is { } external)
+                    {
+                        targets.Add(external);
                     }
                 }
             }
@@ -113,6 +119,26 @@ internal sealed class PluginCallGraph
     {
         var method = md.GetMethodDefinition(handle);
         return TypeName(md, method.GetDeclaringType()) + "::" + md.GetString(method.Name);
+    }
+
+    private static string? ExternalKey(MetadataReader md, MemberReferenceHandle handle)
+    {
+        var member = md.GetMemberReference(handle);
+        return member.Parent.Kind == HandleKind.TypeReference
+            ? TypeName(md, (TypeReferenceHandle)member.Parent) + "::" + md.GetString(member.Name)
+            : null;
+    }
+
+    private static string TypeName(MetadataReader md, TypeReferenceHandle handle)
+    {
+        var type = md.GetTypeReference(handle);
+        if (type.ResolutionScope.Kind == HandleKind.TypeReference)
+        {
+            return TypeName(md, (TypeReferenceHandle)type.ResolutionScope) + "/" + md.GetString(type.Name);
+        }
+
+        var ns = md.GetString(type.Namespace);
+        return ns.Length == 0 ? md.GetString(type.Name) : ns + "." + md.GetString(type.Name);
     }
 
     private static string TypeName(MetadataReader md, TypeDefinitionHandle handle)

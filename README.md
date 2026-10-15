@@ -2,7 +2,7 @@
 
 Teplov Print — плагин для поиска форматов в чертежах и пакетной печати в AutoCAD. Он помогает собрать листы из текущего чертежа или нескольких DWG, проверить их перед выводом и сформировать PDF, растровые файлы, DWF либо отдельные DWG.
 
-Текущая версия: **1.0.4**.
+Текущая версия: **1.0.5**.
 
 ## Возможности
 
@@ -61,33 +61,38 @@ Teplov Print — плагин для поиска форматов в черте
 | --- | --- |
 | AutoCAD 2015–2024 x64 (в том числе AutoCAD 2021) | `AcadBatchPlot.dll` |
 | AutoCAD 2025–2027 x64 | `AcadBatchPlot.Core.dll` |
-| nanoCAD 24 x64 | `NcadBatchPlot.dll` |
+| nanoCAD 24 и 25 x64 | `NcadBatchPlot.dll` |
 
 ## Установка
 
 1. Закройте AutoCAD.
-2. Запустите `Teplov-Print-AutoCAD-Setup-1.0.4.exe` от имени администратора.
+2. Запустите `Teplov-Print-AutoCAD-Setup-1.0.5.exe` от имени администратора.
 3. Инсталлятор разместит плагин в стандартной папке AutoCAD `ApplicationPlugins`; при следующем запуске AutoCAD он загрузится автоматически.
 4. Откройте меню **Teplov** → **Пакетная печать**.
 
 Для ручной загрузки используйте команду `NETLOAD` и выберите DLL, подходящую вашей версии AutoCAD. При предупреждении безопасности добавьте папку плагина в `TRUSTEDPATHS` согласно правилам вашей организации.
 
-### Ручная установка без инсталлятора (AutoCAD 2021, nanoCAD 24)
+### Ручная установка без инсталлятора (AutoCAD 2021, nanoCAD 24/25)
 
 В каждом [выпуске](../../releases) есть архив `Teplov-Print-manual-install-v<версия>.zip`. Он устанавливается без прав администратора — все файлы размещаются только в профиле пользователя (`%APPDATA%`):
 
 - AutoCAD — `%APPDATA%\Autodesk\ApplicationPlugins\TeplovPrint.bundle`, плагин загружается автоматически;
-- nanoCAD 24 — `%APPDATA%\TeplovPrint\nanoCAD24\NcadBatchPlot.dll`, загрузка через `NETLOAD`/`APPLOAD`.
+- nanoCAD 24 и 25 — `%APPDATA%\TeplovPrint\nanoCAD24\NcadBatchPlot.dll`, загрузка через `NETLOAD`/`APPLOAD`.
 
 Пошаговая инструкция — в файле `INSTALL.md` внутри архива ([installer_manual/INSTALL.md](installer_manual/INSTALL.md)).
 
-### Печать в nanoCAD 24
+### Печать в nanoCAD 24 и 25
 
 В AutoCAD PDF, PNG, JPG и DWF печатаются через плоттеры комплекта `LA_pdf.pc3`, `LA_png.pc3`, `LA_jpg.pc3` и `LA_dwf.pc3`. Это конфигурации AutoCAD с драйверами Autodesk, поэтому в nanoCAD они не устанавливаются: PDF (и PNG/JPG, которые получаются из PDF) печатается через встроенный PDF-плоттер nanoCAD, DWF — через DWF-плоттер nanoCAD. Плоттер выбирается автоматически из списка устройств печати nanoCAD; чтобы указать его явно, задайте до запуска nanoCAD переменную окружения `TEPLOV_PRINT_PDF_DEVICE` с именем плоттера, как оно показано в окне «Печать» nanoCAD.
 
 Пользовательские и удлинённые форматы бумаги в nanoCAD не добавляются в конфигурацию плоттера: используется ближайший формат PDF-плоттера nanoCAD, а лист вписывается в него. Преобразование текста в геометрию в nanoCAD задаётся настройками его плоттера.
 
-Печать в nanoCAD 24 выполняется через COM API nanoCAD (`Document.AcadDocument`): параметры задания (плоттер, формат бумаги, окно печати, поворот, масштаб, стиль печати, веса линий) записываются в активный лист (`ActiveLayout`), лист печатается командой `Plot.PlotToFile`, после чего листу возвращаются прежние параметры печати. Управляемый `PlotEngine` nanoCAD 24 не выполняет печать (его методы пустые), а запись параметров в лист через `PlotSettingsValidator` в версии 1.0.3 приводила к закрытию nanoCAD без сообщения (issue #9). Если nanoCAD отклоняет параметр, в отчёте указан шаг, на котором произошёл отказ (например, `ActiveLayout.StyleSheet = monochrome.ctb: COMException 0x80004005: …`).
+Печать в nanoCAD выполняется через COM API nanoCAD (`Document.AcadDocument`): параметры задания (плоттер, формат бумаги, окно печати, поворот, масштаб, стиль печати, веса линий) записываются в активный лист (`ActiveLayout`), лист печатается командой `Plot.PlotToFile`, после чего листу возвращаются прежние параметры печати. Управляемые `PlotFactory`/`PlotEngine` nanoCAD 24 и 25 не выполняют печать (их методы пустые), а запись параметров в лист через `PlotSettingsValidator` в версии 1.0.3 приводила к закрытию nanoCAD без сообщения (issue #9). Если nanoCAD отклоняет параметр, в отчёте указан шаг, на котором произошёл отказ (например, `ActiveLayout.StyleSheet = monochrome.ctb: COMException 0x80004005: …`).
+
+Одна и та же `NcadBatchPlot.dll` работает в nanoCAD 24 и 25: обе версии запускают плагины на .NET 6, а все члены API nanoCAD, которые вызывает плагин, есть в nanoCAD 25 и реализованы там (это проверяют тесты `NanoCad25CompatibilityTests`), поэтому отдельная сборка для nanoCAD 25 не нужна.
+
+- Свойство `Plot.QuietErrorMode` плагин не задаёт: в nanoCAD оно не реализовано, и на каждом листе появлялось окно «COM / NOT_IMPLEMENTED / CPlotObj::put_QuietErrorMode» (issue #11).
+- Если nanoCAD отвечает `TYPE_E_LIBNOTREGISTERED` (0x8002801D, «Библиотека не зарегистрирована») — библиотека типов COM API nanoCAD не зарегистрирована в Windows, — плагин один раз за сеанс находит её среди модулей nanoCAD и регистрирует для текущего пользователя (`RegisterTypeLibForUser`, без прав администратора), после чего повторяет шаг. Найденные библиотеки и результат регистрации записываются в журнал печати. Если это не помогло, восстановите установку nanoCAD (Параметры Windows → Приложения → nanoCAD → Изменить → Восстановить, от имени администратора) и перезапустите nanoCAD.
 
 ### Журнал печати
 
@@ -126,9 +131,9 @@ dotnet build LA.BatchPlot.sln --configuration Debug
 
 - `bin-acad/AcadBatchPlot.dll` — AutoCAD 2015–2024;
 - `bin-acad2025-2027/AcadBatchPlot.Core.dll` — AutoCAD 2025–2027;
-- `bin-nanocad24/NcadBatchPlot.dll` — nanoCAD 24.
+- `bin-nanocad24/NcadBatchPlot.dll` — nanoCAD 24 и 25.
 
-Каждый push собирается в GitHub Actions (`.github/workflows/build.yml`): DLL для AutoCAD 2021 и nanoCAD 24 доступны как артефакты сборки. После изменения `<Version>` в `.csproj` и слияния в основную ветку автоматически публикуется выпуск `v<версия>` с ZIP-архивами.
+Каждый push собирается в GitHub Actions (`.github/workflows/build.yml`): DLL для AutoCAD 2021 и nanoCAD 24/25 доступны как артефакты сборки. После изменения `<Version>` в `.csproj` и слияния в основную ветку автоматически публикуется выпуск `v<версия>` с ZIP-архивами.
 
 Инсталлятор собирается отдельной командой Inno Setup:
 

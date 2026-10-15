@@ -1,4 +1,4 @@
-# Teplov Print — ручная установка (AutoCAD 2021 и nanoCAD 24)
+# Teplov Print — ручная установка (AutoCAD 2021 и nanoCAD 24/25)
 
 Архив предназначен для установки **без прав администратора**: все файлы размещаются
 только в профиле текущего пользователя (`C:\Users\<имя>\AppData\Roaming`, он же `%APPDATA%`).
@@ -10,7 +10,7 @@
 | `AppData\Roaming\Autodesk\ApplicationPlugins\TeplovPrint.bundle\` | пакет для AutoCAD (`PackageContents.xml` + DLL) | `%APPDATA%\Autodesk\ApplicationPlugins\TeplovPrint.bundle\` |
 | `…\TeplovPrint.bundle\Contents\AutoCAD2015-2024\AcadBatchPlot.dll` | плагин для **AutoCAD 2021** (подходит для AutoCAD 2015–2024 x64) | — |
 | `…\TeplovPrint.bundle\Contents\AutoCAD2025-2027\AcadBatchPlot.Core.dll` | плагин для AutoCAD 2025–2027 x64 | — |
-| `AppData\Roaming\TeplovPrint\nanoCAD24\NcadBatchPlot.dll` | плагин для **nanoCAD 24** x64 | `%APPDATA%\TeplovPrint\nanoCAD24\` |
+| `AppData\Roaming\TeplovPrint\nanoCAD24\NcadBatchPlot.dll` | плагин для **nanoCAD 24 и 25** x64 | `%APPDATA%\TeplovPrint\nanoCAD24\` |
 | `install.cmd` | копирует папку `AppData` в профиль пользователя | — |
 | `uninstall.cmd` | удаляет установленные файлы из профиля пользователя | — |
 
@@ -65,9 +65,9 @@ AutoCAD автоматически загружает пакеты из папк
 Если плагин не загрузился автоматически, выполните `NETLOAD` и выберите
 `%APPDATA%\Autodesk\ApplicationPlugins\TeplovPrint.bundle\Contents\AutoCAD2015-2024\AcadBatchPlot.dll`.
 
-## 4. nanoCAD 24
+## 4. nanoCAD 24 и 25
 
-1. Запустите nanoCAD 24 x64.
+1. Запустите nanoCAD 24 или 25 x64.
 2. Выполните команду `NETLOAD` (или `APPLOAD`) и выберите файл
    `%APPDATA%\TeplovPrint\nanoCAD24\NcadBatchPlot.dll`.
    В поле имени файла можно вставить путь целиком — `%APPDATA%` будет раскрыт.
@@ -83,7 +83,10 @@ AutoCAD автоматически загружает пакеты из папк
   полный список — в `README.md` проекта); пункт меню **Teplov** создаётся, только если
   интерфейс nanoCAD это позволяет;
 - команда `ZBP_INSTALL_AUTOLOAD` рассчитана на AutoCAD; для nanoCAD используйте автозагрузку
-  `APPLOAD`, описанную выше.
+  `APPLOAD`, описанную выше;
+- если печать в nanoCAD завершается ошибкой `TYPE_E_LIBNOTREGISTERED` (0x8002801D), восстановите
+  установку nanoCAD (Параметры Windows → Приложения → nanoCAD → Изменить → Восстановить, от имени
+  администратора) и перезапустите nanoCAD.
 
 ## 5. Обновление
 

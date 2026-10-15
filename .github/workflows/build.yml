@@ -127,10 +127,10 @@ jobs:
 
           | Файл | Назначение |
           | --- | --- |
-          | \`Teplov-Print-manual-install-v$VERSION.zip\` | **ручная установка в профиль пользователя** для AutoCAD 2021 (2015–2027) и nanoCAD 24, инструкция \`INSTALL.md\` внутри |
+          | \`Teplov-Print-manual-install-v$VERSION.zip\` | **ручная установка в профиль пользователя** для AutoCAD 2021 (2015–2027) и nanoCAD 24/25, инструкция \`INSTALL.md\` внутри |
           | \`Teplov-Print-AutoCAD2015-2024-v$VERSION.zip\` | DLL для AutoCAD 2015–2024 (в том числе 2021) |
           | \`Teplov-Print-AutoCAD2025-2027-v$VERSION.zip\` | DLL для AutoCAD 2025–2027 |
-          | \`Teplov-Print-nanoCAD24-v$VERSION.zip\` | DLL для nanoCAD 24 |
+          | \`Teplov-Print-nanoCAD24-v$VERSION.zip\` | DLL для nanoCAD 24 и 25 |
 
           Контрольные суммы SHA256 — в \`release-manifest.txt\`.
           EOF

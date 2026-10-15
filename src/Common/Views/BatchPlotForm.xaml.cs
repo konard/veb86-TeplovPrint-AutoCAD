@@ -1881,9 +1881,7 @@ public sealed partial class BatchPlotForm : Window
             _lastLogPath = BatchPlotLogger.SaveRunLog(_logLines);
             RefreshStatus();
 
-            var logText = string.IsNullOrWhiteSpace(_lastLogPath)
-                ? ""
-                : $"\nЖурнал:\n{_lastLogPath}";
+            var logText = PrintLogMessageText(_lastLogPath);
             var failedText = failed == 0
                 ? ""
                 : "\n\nОшибки:\n" + string.Join("\n", results.Where(x => x.Error != null).Take(20).Select(x => $"{x.Job.DrawingNumber}_{x.Job.Title}: {x.Error!.Message}"));
@@ -2195,17 +2193,51 @@ public sealed partial class BatchPlotForm : Window
     {
         if (_printCts != null)
         {
+            PrintSessionLog.Info("Нажата кнопка «Остановить».");
             _printCts.Cancel();
             return;
         }
 
-        if (IsDwgOutput)
+        // Issue #9: every "Начать печать" starts a new %TEMP% log, and nothing may escape the click handler.
+        using var session = PrintSessionScope.Begin(Dispatcher, "пакетная печать (" + SelectedOutputFormat + ")");
+        try
         {
-            SplitSelectedDwgs();
-            return;
-        }
+            LogPrintRequest();
+            if (IsDwgOutput)
+            {
+                SplitSelectedDwgs();
+                return;
+            }
 
-        PrintSelectedJobs();
+            PrintSelectedJobs();
+        }
+        catch (Exception ex)
+        {
+            session.Result = "печать прервана исключением: " + ex.Message;
+            PrintSessionLog.Error("Печать прервана", ex);
+            System.Windows.MessageBox.Show(
+                "Ошибка печати: " + ex.Message + PrintLogMessageText(""),
+                "Пакетная печать",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>Что именно запросил пользователь: попадает в начало журнала печати.</summary>
+    private void LogPrintRequest()
+    {
+        PrintSessionLog.Info($"Окно: пакетная печать; формат={SelectedOutputFormat}; устройство={SelectedPlotDevice}; стиль={_styleCombo.SelectedItem}; "
+            + $"папка={_outputDirectory.Text} (своя={_outputDirectoryIsCustom}); объединять PDF={_mergePdfCheckBox.IsChecked}; "
+            + $"поля={_leaveMarginCheckBox.IsChecked} {_marginInput.Text}");
+        PrintSessionLog.Info($"Чертёж: {_currentDocument?.Name}; листов: {_jobs.Count}; выбрано: {_jobs.Count(x => x.Selected)}");
+        PrintSessionLog.Info("Настройки: " + PrintSessionLog.DescribeSettings(_settings));
+    }
+
+    /// <summary>"\nЖурнал: путь" for the result message: the %TEMP% log and, if enabled, the saved run log.</summary>
+    private static string PrintLogMessageText(string savedLogPath)
+    {
+        var text = "\nЖурнал печати: " + PrintSessionLog.LastPath;
+        return string.IsNullOrWhiteSpace(savedLogPath) ? text : text + "\nЖурнал: " + savedLogPath;
     }
 
     private bool IsDwgOutput => string.Equals(
@@ -2361,6 +2393,12 @@ public sealed partial class BatchPlotForm : Window
         var wasTopmost = Topmost;
         BatchPlotHostProgress.Begin();
         BatchPrintProgressSession? progress = null;
+        PrintSessionLog.Info($"Печать: листов {selected.Count}; устройство={device}; стиль={style}; объединение PDF={mergePdf} ({_mergedOutputPath})");
+        foreach (var job in selected)
+        {
+            PrintSessionLog.Info("Лист: " + PrintSessionLog.DescribeJob(job));
+        }
+
         try
         {
 
@@ -2432,6 +2470,7 @@ public sealed partial class BatchPlotForm : Window
                 var ex = result.Error!;
                 var message = $"{job.DrawingNumber}_{job.Title}: {ex.Message}";
                 failed.Add(message);
+                PrintSessionLog.Error($"Лист {job.DrawingNumber}_{job.Title}", ex);
                 AppendLog("ERROR", ex.ToString());
                 AppendLog("ERROR", "Ошибка печати: " + message);
             }
@@ -2486,7 +2525,7 @@ public sealed partial class BatchPlotForm : Window
             }
 
             var printLogPath = SavePrintLogIfEnabled();
-            var printLogText = string.IsNullOrWhiteSpace(printLogPath) ? "" : $"\nЖурнал: {printLogPath}";
+            var printLogText = PrintLogMessageText(printLogPath);
         _statusLabel.Text = $"Готово: {printed} лист(ов)";
             var mergedFilesText = string.Join("\n", mergedOutputPaths);
             var summary = mergePdf
@@ -2515,43 +2554,63 @@ public sealed partial class BatchPlotForm : Window
             _statusLabel.Text = $"Остановлено (готово {completed} из {selected.Count})";
             AppendLog("INFO", $"Печать отменена пользователем; готово {completed} из {selected.Count}");
             var printLogPath = SavePrintLogIfEnabled();
-            var printLogText = string.IsNullOrWhiteSpace(printLogPath) ? "" : $"\nЖурнал: {printLogPath}";
+            var printLogText = PrintLogMessageText(printLogPath);
             System.Windows.MessageBox.Show($"Печать остановлена.\nГотово {completed} из {selected.Count}.{printLogText}", "Пакетная печать", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
         _statusLabel.Text = "Ошибка печати";
+            PrintSessionLog.Error("Печать прервана", ex);
             AppendLog("ERROR", ex.ToString());
             var printLogPath = SavePrintLogIfEnabled();
-            var printLogText = string.IsNullOrWhiteSpace(printLogPath) ? "" : $"\nЖурнал: {printLogPath}";
+            var printLogText = PrintLogMessageText(printLogPath);
             System.Windows.MessageBox.Show("Ошибка печати: " + ex.Message + printLogText, "Пакетная печать", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
-            foreach (var pair in originalOutputPaths)
+            // Every cleanup step runs even if a previous one fails: an exception here would close the CAD (issue #9).
+            RunPrintCleanup("Восстановление путей вывода", () =>
             {
-                pair.Key.OutputPath = pair.Value;
-            }
+                foreach (var pair in originalOutputPaths)
+                {
+                    pair.Key.OutputPath = pair.Value;
+                }
+            });
 
             if (!string.IsNullOrWhiteSpace(temporaryDirectory))
             {
-                TryDeleteDirectory(temporaryDirectory);
+                RunPrintCleanup("Удаление временной папки", () => TryDeleteDirectory(temporaryDirectory));
             }
 
 
             _printCts?.Dispose();
             _printCts = null;
+            RunPrintCleanup("Сброс кнопки печати", () =>
+            {
         _printButton.Content = "Начать печать";
-            _printButton.Background = new SolidColorBrush(Color.FromRgb(0, 120, 215));
-            _printButton.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 95, 170));
-            Topmost = wasTopmost;
-            progress?.Dispose();
+                _printButton.Background = new SolidColorBrush(Color.FromRgb(0, 120, 215));
+                _printButton.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 95, 170));
+                Topmost = wasTopmost;
+            });
+            RunPrintCleanup("Закрытие окна хода печати", () => progress?.Dispose());
             progress = null;
             BatchPlotHostProgress.End();
 
-            RefreshStatus();
+            RunPrintCleanup("Обновление состояния", RefreshStatus);
 
-            ClearSequenceOverlay();
+            RunPrintCleanup("Удаление временных номеров", () => ClearSequenceOverlay());
+        }
+    }
+
+    private static void RunPrintCleanup(string step, Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception ex)
+        {
+            PrintSessionLog.Error(step, ex);
         }
     }
 
@@ -2794,6 +2853,7 @@ public sealed partial class BatchPlotForm : Window
 
     private void AppendLog(string level, string message)
     {
+        PrintSessionLog.Write(level, message);
         if (!_settings.GeneratePrintLog)
         {
             return;

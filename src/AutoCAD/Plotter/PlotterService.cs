@@ -125,7 +125,10 @@ public static partial class PlotterService
     {
         var results = new List<PlotJobResult>();
         var oldActive = CadApp.DocumentManager.MdiActiveDocument;
+        PrintSessionLog.Info($"PlotMany: заданий={jobs.Count}; устройство={deviceName}; стиль={styleSheet}; "
+            + $"чертёж={currentDocument?.Name}; активный={oldActive?.Name}; {DescribeCadForLog()}");
 
+        PrintSessionLog.Step("EnsureTextGeometryMode(" + deviceName + ")");
         EnsureTextGeometryMode(deviceName, settings.ConvertTextToGeometryWhenPlotting);
         using var variables = PlotSystemVariables.Apply(settings.PlotTransparency);
         try
@@ -214,7 +217,25 @@ public static partial class PlotterService
         }
     }
 
-    
+    /// <summary>CAD version and the plot-related system variables for the print log (issue #9).</summary>
+    private static string DescribeCadForLog()
+    {
+        var text = new List<string>();
+        foreach (var name in new[] { "ACADVER", "PRODUCT", "LOCALE", "BACKGROUNDPLOT", "PUBLISHCOLLATE", "PDFSHX", "PLOTTRANSPARENCYOVERRIDE", "TILEMODE", "CTAB" })
+        {
+            try
+            {
+                text.Add(name + "=" + CadApp.GetSystemVariable(name));
+            }
+            catch (Exception ex)
+            {
+                text.Add(name + "=<" + ex.GetType().Name + ">");
+            }
+        }
+
+        return string.Join("; ", text);
+    }
+
     private static string GetGroupKey(PlotJob job, Document currentDocument)
     {
         if (IsCurrentDocumentJob(job, currentDocument))

@@ -15,6 +15,8 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <!-- Real nanoCAD 24 runtime assemblies (hostmgd.dll, hostdbmgd.dll): only inspected as metadata, never referenced. -->
     <PackageReference Include="ModPlus.nanoCAD.API.24" Version="2.0.0" GeneratePathProperty="true" ExcludeAssets="all" PrivateAssets="all" />
+    <!-- nanoCAD 25 runtime assemblies: the same NcadBatchPlot.dll is loaded there (issue #11). -->
+    <PackageReference Include="ModPlus.nanoCAD.API.25" Version="2.0.0" GeneratePathProperty="true" ExcludeAssets="all" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
@@ -26,6 +28,10 @@
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>NanoCadApiDir</_Parameter1>
       <_Parameter2>$(PkgModPlus_nanoCAD_API_24)\lib\net6.0</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>NanoCad25ApiDir</_Parameter1>
+      <_Parameter2>$(PkgModPlus_nanoCAD_API_25)\lib\net6.0</_Parameter2>
     </AssemblyAttribute>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>PluginPath</_Parameter1>

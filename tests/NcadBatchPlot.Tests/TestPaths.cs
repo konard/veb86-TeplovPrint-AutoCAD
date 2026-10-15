@@ -6,6 +6,8 @@ internal static class TestPaths
 {
     public static string NanoCadApiDir => Get("NanoCadApiDir");
 
+    public static string NanoCad25ApiDir => Get("NanoCad25ApiDir");
+
     public static string PluginPath => Get("PluginPath");
 
     public static string PluginProjectPath => Get("PluginProjectPath");

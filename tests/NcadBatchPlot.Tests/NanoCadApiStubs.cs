@@ -57,6 +57,29 @@ internal static class NanoCadApiStubs
         return result;
     }
 
+    /// <summary>Returns "Type::Member(signature)" keys of every method defined by the host assemblies in <paramref name="apiDir"/>.</summary>
+    public static ISet<string> FindDefinedMembers(string apiDir)
+    {
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var name in HostAssemblies)
+        {
+            using var stream = File.OpenRead(Path.Combine(apiDir, name + ".dll"));
+            using var pe = new PEReader(stream);
+            var md = pe.GetMetadataReader();
+            foreach (var typeHandle in md.TypeDefinitions)
+            {
+                foreach (var methodHandle in md.GetTypeDefinition(typeHandle).GetMethods())
+                {
+                    var method = md.GetMethodDefinition(methodHandle);
+                    result.Add(MemberKey(TypeName(md, typeHandle), md.GetString(method.Name),
+                        method.DecodeSignature(SignatureNames.Instance, null)));
+                }
+            }
+        }
+
+        return result;
+    }
+
     /// <summary>Returns "Type::Member(signature)" keys of every nanoCAD API method referenced by the plugin.</summary>
     public static ISet<string> FindHostApiReferences(string pluginPath)
     {

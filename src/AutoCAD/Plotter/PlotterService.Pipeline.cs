@@ -48,22 +48,11 @@ public static partial class PlotterService
         HostApplicationServices.WorkingDatabase = db;
         try
         {
-            using var tr = db.TransactionManager.StartTransaction();
-            var layout = FindLayoutForJob(tr, db, job);
-            var window = GetPlotWindow(job, plotDocument);
-            using var plot = CreateValidatedPlot(
-                layout,
-                job,
-                window,
-                deviceName,
-                styleSheet,
-                settings.HideFrameBoundaryWhenPlotting,
-                settings.PlotTransparency,
-                settings.PlotObjectLineweights);
-
-            PrepareOutputFile(job.OutputPath);
-            RunPlot(plot.Info, documentName, job.OutputPath, job.DrawingNumber);
-            tr.Commit();
+            OutputWithJobSettings(db, job, deviceName, styleSheet, settings, plotDocument, info =>
+            {
+                PrepareOutputFile(job.OutputPath);
+                RunPlot(info, documentName, job.OutputPath, job.DrawingNumber);
+            });
             WaitForPlotIdle();
             ValidatePlotOutput(job.OutputPath);
         }
@@ -72,6 +61,170 @@ public static partial class PlotterService
             HostApplicationServices.WorkingDatabase = oldDatabase;
         }
     }
+
+    /// <summary>
+    /// Builds the PlotInfo of the job and runs <paramref name="output"/> (plot or preview) with it.
+    /// AutoCAD: the job settings are passed as PlotInfo.OverrideSettings, the layout is not modified.
+    /// nanoCAD 24 rejected every override attempt with "External component has thrown an exception" (issue #7):
+    /// its native PlotSettingsValidator is applied there to a PlotSettings that is not in the database.
+    /// Then the settings are applied to the layout itself, as nanoCAD's own plotting API does, and the layout
+    /// page setup is restored after the output.
+    /// </summary>
+    private static void OutputWithJobSettings(
+        Database db,
+        PlotJob job,
+        string deviceName,
+        string styleSheet,
+        AppSettings settings,
+        Document? plotDocument,
+        Action<PlotInfo> output)
+    {
+#if NANOCAD
+        if (!_nanoCadPlotsThroughLayout)
+        {
+            try
+            {
+                OutputWithOverrideSettings(db, job, deviceName, styleSheet, settings, plotDocument, output);
+                return;
+            }
+            catch (PlotSettingsRejectedException overrideFailure)
+            {
+                TraceLog.Write("Override plot settings rejected, applying them to the layout: " + overrideFailure.Message);
+                try
+                {
+                    OutputWithConfiguredLayout(db, job, deviceName, styleSheet, settings, plotDocument, output);
+                }
+                catch (PlotSettingsRejectedException layoutFailure)
+                {
+                    throw new PlotSettingsRejectedException(
+                        overrideFailure.Message + " Печать с параметрами самого листа тоже не удалась: " + layoutFailure.Message,
+                        layoutFailure);
+                }
+
+                _nanoCadPlotsThroughLayout = true;
+                return;
+            }
+        }
+
+        OutputWithConfiguredLayout(db, job, deviceName, styleSheet, settings, plotDocument, output);
+#else
+        OutputWithOverrideSettings(db, job, deviceName, styleSheet, settings, plotDocument, output);
+#endif
+    }
+
+    
+    private static void OutputWithOverrideSettings(
+        Database db,
+        PlotJob job,
+        string deviceName,
+        string styleSheet,
+        AppSettings settings,
+        Document? plotDocument,
+        Action<PlotInfo> output)
+    {
+        using var tr = db.TransactionManager.StartTransaction();
+        var layout = FindLayoutForJob(tr, db, job);
+        var window = GetPlotWindow(job, plotDocument);
+        using var plot = CreateValidatedPlot(
+            layout,
+            job,
+            window,
+            deviceName,
+            styleSheet,
+            settings.HideFrameBoundaryWhenPlotting,
+            settings.PlotTransparency,
+            settings.PlotObjectLineweights,
+            configureLayout: false);
+
+        output(plot.Info);
+        tr.Commit();
+    }
+
+#if NANOCAD
+    /// <summary>
+    /// The override settings were rejected by nanoCAD once; the next jobs go straight to the layout route
+    /// instead of repeating four failing native calls per sheet.
+    /// </summary>
+    private static bool _nanoCadPlotsThroughLayout;
+
+    /// <summary>
+    /// nanoCAD (issue #7): applies the job settings to the database-resident layout, plots it without
+    /// OverrideSettings and restores the original page setup of the layout afterwards.
+    /// </summary>
+    private static void OutputWithConfiguredLayout(
+        Database db,
+        PlotJob job,
+        string deviceName,
+        string styleSheet,
+        AppSettings settings,
+        Document? plotDocument,
+        Action<PlotInfo> output)
+    {
+        ObjectId layoutId;
+        PlotSettings original;
+        PlotInfo info;
+        using (var tr = db.TransactionManager.StartTransaction())
+        {
+            var layout = FindLayoutForJob(tr, db, job);
+            layoutId = layout.ObjectId;
+            original = new PlotSettings(layout.ModelType);
+            original.CopyFrom(layout);
+            var window = GetPlotWindow(job, plotDocument);
+            layout.UpgradeOpen();
+            try
+            {
+                using var plot = CreateValidatedPlot(
+                    layout,
+                    job,
+                    window,
+                    deviceName,
+                    styleSheet,
+                    settings.HideFrameBoundaryWhenPlotting,
+                    settings.PlotTransparency,
+                    settings.PlotObjectLineweights,
+                    configureLayout: true);
+                info = plot.Info;
+            }
+            catch
+            {
+                original.Dispose();
+                throw;
+            }
+
+            // The plot engine reads the layout from the database: the configured page setup has to be committed.
+            tr.Commit();
+        }
+
+        try
+        {
+            output(info);
+        }
+        finally
+        {
+            RestoreLayoutPlotSettings(db, layoutId, original);
+        }
+    }
+
+    
+    private static void RestoreLayoutPlotSettings(Database db, ObjectId layoutId, PlotSettings original)
+    {
+        try
+        {
+            using var tr = db.TransactionManager.StartTransaction();
+            var layout = (Layout)tr.GetObject(layoutId, OpenMode.ForWrite);
+            layout.CopyFrom(original);
+            tr.Commit();
+        }
+        catch (Exception ex)
+        {
+            TraceLog.Write("RestoreLayoutPlotSettings failed: " + ex);
+        }
+        finally
+        {
+            original.Dispose();
+        }
+    }
+#endif
 
     
     private static ValidatedPlot CreateValidatedPlot(
@@ -82,19 +235,20 @@ public static partial class PlotterService
         string styleSheet,
         bool hideOuterFrame,
         bool plotTransparency,
-        bool plotObjectLineweights)
+        bool plotObjectLineweights,
+        bool configureLayout)
     {
         try
         {
             return CreateValidatedPlotCore(
-                layout, job, window, deviceName, styleSheet, hideOuterFrame, plotTransparency, plotObjectLineweights);
+                layout, job, window, deviceName, styleSheet, hideOuterFrame, plotTransparency, plotObjectLineweights, configureLayout);
         }
         catch (CachedMediaCatalogException)
         {
 
             InvalidateMediaCatalog(deviceName);
             return CreateValidatedPlotCore(
-                layout, job, window, deviceName, styleSheet, hideOuterFrame, plotTransparency, plotObjectLineweights);
+                layout, job, window, deviceName, styleSheet, hideOuterFrame, plotTransparency, plotObjectLineweights, configureLayout);
         }
     }
 
@@ -107,7 +261,8 @@ public static partial class PlotterService
         string styleSheet,
         bool hideOuterFrame,
         bool plotTransparency,
-        bool plotObjectLineweights)
+        bool plotObjectLineweights,
+        bool configureLayout)
     {
         var validator = PlotSettingsValidator.Current;
         var media = ChooseMedia(validator, layout, deviceName, job, window, out var usedCachedCatalog);
@@ -117,10 +272,15 @@ public static partial class PlotterService
         var preferredRotation = ResolvePlotRotation(deviceName, media.PreferredRotation, job, window);
         foreach (var rotation in RotationOrder(preferredRotation))
         {
-            var settings = new PlotSettings(layout.ModelType);
+            // configureLayout: the layout is open for write and is configured itself (nanoCAD, issue #7).
+            var settings = configureLayout ? layout : new PlotSettings(layout.ModelType);
             try
             {
-                settings.CopyFrom(layout);
+                if (!configureLayout)
+                {
+                    PlotStepException.Run("CopyFrom(layout)", () => settings.CopyFrom(layout));
+                }
+
                 ConfigurePlotSettings(
                     validator,
                     settings,
@@ -136,9 +296,12 @@ public static partial class PlotterService
 
                 var info = new PlotInfo
                 {
-                    Layout = layout.ObjectId,
-                    OverrideSettings = settings
+                    Layout = layout.ObjectId
                 };
+                if (!configureLayout)
+                {
+                    info.OverrideSettings = settings;
+                }
 
                 ValidatePlotInfo(info);
 
@@ -158,17 +321,21 @@ public static partial class PlotterService
                     Info = info,
                     Settings = settings,
                     Media = media,
-                    Rotation = rotation
+                    Rotation = rotation,
+                    OwnsSettings = !configureLayout
                 };
             }
             catch (Exception ex)
             {
                 errors.Add($"{media.Name}/{rotation}: {ex.Message}");
-                settings.Dispose();
+                if (!configureLayout)
+                {
+                    settings.Dispose();
+                }
             }
         }
 
-        var failure = new InvalidOperationException(
+        var failure = new PlotSettingsRejectedException(
             "AutoCAD отклонил текущие параметры печати."
             + $" Лист={job.DrawingNumber}_{job.Title};"
             + $" Бумага={job.PaperWidthMm:0.##}x{job.PaperHeightMm:0.##} мм;"
@@ -213,55 +380,63 @@ public static partial class PlotterService
         bool plotTransparency,
         bool plotObjectLineweights)
     {
-        try
+        // Every call is labelled: nanoCAD 24 reports failures of its native plot code only as
+        // "External component has thrown an exception" (issue #7), without saying which setting was refused.
+        var mediaName = media.UseClosestBySize ? null : media.Name;
+        PlotStepException.Run($"SetPlotConfigurationName({deviceName}, {mediaName ?? "<null>"})", () =>
         {
-            validator.SetPlotConfigurationName(settings, deviceName, media.UseClosestBySize ? null : media.Name);
-        }
-        catch
-        {
-            validator.SetPlotConfigurationName(settings, deviceName, null);
-        }
+            try
+            {
+                validator.SetPlotConfigurationName(settings, deviceName, mediaName);
+            }
+            catch
+            {
+                validator.SetPlotConfigurationName(settings, deviceName, null);
+            }
+        });
 
-        validator.RefreshLists(settings);
+        PlotStepException.Run("RefreshLists", () => validator.RefreshLists(settings));
         var paperUnit = IsRasterPlotDevice(deviceName)
             ? PlotPaperUnit.Pixels
             : PlotPaperUnit.Millimeters;
 
-        validator.SetPlotPaperUnits(settings, paperUnit);
+        PlotStepException.Run($"SetPlotPaperUnits({paperUnit})", () => validator.SetPlotPaperUnits(settings, paperUnit));
         if (media.UseClosestBySize)
         {
-            validator.SetClosestMediaName(settings, media.WidthMm, media.HeightMm, PlotPaperUnit.Millimeters, false);
+            PlotStepException.Run(
+                $"SetClosestMediaName({media.WidthMm:0.##}x{media.HeightMm:0.##})",
+                () => validator.SetClosestMediaName(settings, media.WidthMm, media.HeightMm, PlotPaperUnit.Millimeters, false));
         }
         else
         {
-            validator.SetCanonicalMediaName(settings, media.Name);
+            PlotStepException.Run($"SetCanonicalMediaName({media.Name})", () => validator.SetCanonicalMediaName(settings, media.Name));
         }
 
-        EnsureRequiredMediaSize(settings, media, deviceName);
+        PlotStepException.Run("EnsureRequiredMediaSize", () => EnsureRequiredMediaSize(settings, media, deviceName));
 
 
-        validator.SetPlotWindowArea(settings, window);
-        validator.SetPlotType(settings, DbPlotType.Window);
-        ConfigurePlotScale(validator, settings, window, job, deviceName, hideOuterFrame);
-        validator.SetPlotRotation(settings, rotation);
+        PlotStepException.Run("SetPlotWindowArea", () => validator.SetPlotWindowArea(settings, window));
+        PlotStepException.Run("SetPlotType(Window)", () => validator.SetPlotType(settings, DbPlotType.Window));
+        PlotStepException.Run("ConfigurePlotScale", () => ConfigurePlotScale(validator, settings, window, job, deviceName, hideOuterFrame));
+        PlotStepException.Run($"SetPlotRotation({rotation})", () => validator.SetPlotRotation(settings, rotation));
 
 
-        validator.SetPlotCentered(settings, true);
+        PlotStepException.Run("SetPlotCentered", () => validator.SetPlotCentered(settings, true));
 
         if (!string.IsNullOrWhiteSpace(styleSheet))
         {
-            validator.SetCurrentStyleSheet(settings, styleSheet);
+            PlotStepException.Run($"SetCurrentStyleSheet({styleSheet})", () => validator.SetCurrentStyleSheet(settings, styleSheet));
         }
 
 
         if (hideOuterFrame)
         {
-            TryApplyHiddenFrameWindow(validator, settings, window, job, deviceName);
+            PlotStepException.Run("HiddenFrameWindow", () => TryApplyHiddenFrameWindow(validator, settings, window, job, deviceName));
         }
 
-        settings.PlotTransparency = plotTransparency;
+        PlotStepException.Run("PlotTransparency", () => settings.PlotTransparency = plotTransparency);
 
-        settings.PrintLineweights = plotObjectLineweights;
+        PlotStepException.Run("PrintLineweights", () => settings.PrintLineweights = plotObjectLineweights);
     }
 
     
@@ -378,21 +553,8 @@ public static partial class PlotterService
         HostApplicationServices.WorkingDatabase = db;
         try
         {
-            using var tr = db.TransactionManager.StartTransaction();
             var settings = AppSettingsStore.Load();
-            var layout = FindLayoutForJob(tr, db, job);
-            var window = GetPlotWindow(job, plotDocument);
-            using var plot = CreateValidatedPlot(
-                layout,
-                job,
-                window,
-                deviceName,
-                styleSheet,
-                settings.HideFrameBoundaryWhenPlotting,
-                settings.PlotTransparency,
-                settings.PlotObjectLineweights);
-            RunPreview(plot.Info, documentName);
-            tr.Commit();
+            OutputWithJobSettings(db, job, deviceName, styleSheet, settings, plotDocument, info => RunPreview(info, documentName));
             WaitForPlotIdle();
         }
         finally

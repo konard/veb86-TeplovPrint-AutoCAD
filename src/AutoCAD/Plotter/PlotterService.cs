@@ -74,6 +74,20 @@ public static partial class PlotterService
         }
     }
 
+    /// <summary>Every media/rotation attempt to configure the plot settings of a sheet was refused by the CAD.</summary>
+    private sealed class PlotSettingsRejectedException : InvalidOperationException
+    {
+        public PlotSettingsRejectedException(string message)
+            : base(message)
+        {
+        }
+
+        public PlotSettingsRejectedException(string message, Exception innerException)
+            : base(message, innerException)
+        {
+        }
+    }
+
     private static readonly object MediaCatalogCacheLock = new();
     private static readonly Dictionary<string, IReadOnlyList<MediaCatalogItem>> MediaCatalogCache =
         new(StringComparer.OrdinalIgnoreCase);
@@ -86,10 +100,16 @@ public static partial class PlotterService
         public MediaChoice Media { get; set; } = new();
         public PlotRotation Rotation { get; set; }
 
+        /// <summary>False when Settings is the layout itself (nanoCAD, issue #7): it belongs to the database.</summary>
+        public bool OwnsSettings { get; set; } = true;
+
         
         public void Dispose()
         {
-            Settings.Dispose();
+            if (OwnsSettings)
+            {
+                Settings.Dispose();
+            }
         }
     }
 

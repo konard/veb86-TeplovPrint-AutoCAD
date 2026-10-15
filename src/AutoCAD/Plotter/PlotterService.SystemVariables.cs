@@ -54,11 +54,13 @@ public static partial class PlotterService
             try
             {
                 var oldValue = CadApp.GetSystemVariable(name);
+                PrintSessionLog.Step($"SetSystemVariable({name}: {oldValue} -> {value})");
                 CadApp.SetSystemVariable(name, value);
                 _oldValues.Add((name, oldValue));
             }
-            catch
+            catch (Exception ex)
             {
+                PrintSessionLog.Write("WARN", $"Системная переменная {name} не установлена: {ex.GetType().Name}: {ex.Message}");
             }
         }
 

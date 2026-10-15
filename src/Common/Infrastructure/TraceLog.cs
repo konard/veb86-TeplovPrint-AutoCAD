@@ -8,6 +8,7 @@ namespace ZwcadBatchPlot;
 /// Диагностический журнал загрузки плагина. По умолчанию выключен.
 /// Включается переменной окружения TEPLOV_PRINT_TRACE=1 (до запуска CAD):
 /// сообщения пишутся в System.Diagnostics.Trace и в %TEMP%\TeplovPrint-trace.log.
+/// Во время печати сообщения всегда попадают и в журнал печати <see cref="PrintSessionLog"/> (issue #9).
 /// </summary>
 internal static class TraceLog
 {
@@ -16,6 +17,7 @@ internal static class TraceLog
 
     public static void Write(string message)
     {
+        PrintSessionLog.Write("TRACE", message);
         if (!Enabled)
         {
             return;

@@ -44,17 +44,19 @@ dotnet test tests/NcadBatchPlot.Tests
 - `NanoCadApiUsageTests` находит заглушки в настоящих `hostmgd.dll`/`hostdbmgd.dll` nanoCAD 24 (пакет `ModPlus.nanoCAD.API.24`) и падает, если плагин ссылается хотя бы на одну из них;
 - `NetloadXamlResourceTests` повторяет загрузку `NETLOAD` (`Assembly.LoadFile` и обработчик `AssemblyResolve` nanoCAD) и поиск сборки WPF для pack URI окна `BatchPlotForm` и проверяет, что вторая копия плагина не загружается.
 - `NanoCadPdfPlotterTests` строит граф вызовов IL плагина и падает, если какой-либо путь вызова в сборке nanoCAD ведёт к пересборке `LA_*.pc3` из драйвера AutoCAD (`TryWriteLaPia2PairFromTemplate`), а также проверяет выбор PDF/DWF-плоттера nanoCAD (`PlotDeviceSelector`).
-- `NanoCadPlotSettingsTests` проверяет по графу вызовов, что печать и предварительный просмотр nanoCAD умеют печатать через настроенный лист и восстанавливают его параметры, и что ошибки шагов настройки называют шаг и тип исключения (`PlotStepException`).
+- `NanoCadPlotSettingsTests` проверяет по графу вызовов, что печать и предварительный просмотр nanoCAD восстанавливают параметры печати листа, и что ошибки шагов настройки называют шаг и тип исключения (`PlotStepException`).
+- `NanoCadPrintRouteTests` проверяет, что nanoCAD не печатает через пустой управляемый `PlotEngine` и не переписывает лист через `PlotSettingsValidator` (закрытие nanoCAD в 1.0.3, issue #9), а печатает через COM-объект `Plot`; также проверяются масштаб для COM-листа и поиск файла печати под другим расширением.
+- `PrintSessionLogTests` проверяет журнал `%TEMP%\TeplovPrint-print.log`: он создаётся при каждом «Начать печать», заменяет прежний, сохраняет каждую строку сразу и содержит окружение, шаги и ошибки.
 
-Диагностика загрузки в nanoCAD включается переменной окружения `TEPLOV_PRINT_TRACE=1` (задать до запуска CAD): журнал пишется в `%TEMP%\TeplovPrint-trace.log`. В журнал также записываются список устройств печати nanoCAD и выбранный PDF-плоттер.
+Диагностика загрузки в nanoCAD включается переменной окружения `TEPLOV_PRINT_TRACE=1` (задать до запуска CAD): журнал пишется в `%TEMP%\TeplovPrint-trace.log`. В журнал также записываются список устройств печати nanoCAD и выбранный PDF-плоттер. Журнал печати `%TEMP%\TeplovPrint-print.log` пишется всегда, без переменной окружения: он создаётся заново при каждом «Начать печать», и пока печать идёт, туда же попадают сообщения трассировки.
 
 ## Пакет выпуска
 
 `scripts/package-release.ps1` формирует локальный выпуск из трёх папок сборки. Перед запуском соберите все DLL (`-Target All`):
 
 ```powershell
-.\scripts\package-release.ps1 -Version 1.0.3
-.\scripts\test-release-package.ps1 -Version 1.0.3
+.\scripts\package-release.ps1 -Version 1.0.4
+.\scripts\test-release-package.ps1 -Version 1.0.4
 ```
 
 Архивы создаются в папке `release` и не входят в исходный код:

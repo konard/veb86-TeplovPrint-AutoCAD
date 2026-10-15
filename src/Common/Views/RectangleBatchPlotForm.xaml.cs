@@ -1791,12 +1791,30 @@ public sealed partial class RectangleBatchPlotForm : Window
     {
         if (_printCts != null)
         {
-
+            PrintSessionLog.Info("Нажата кнопка «Остановить».");
             _printCts.Cancel();
             return;
         }
 
-        Print();
+        // Issue #9: every "Начать печать" starts a new %TEMP% log, and nothing may escape the click handler.
+        using var session = PrintSessionScope.Begin(Dispatcher, "универсальная пакетная печать (" + SelectedOutputFormat + ")");
+        try
+        {
+            PrintSessionLog.Info($"Окно: универсальная пакетная печать; формат={SelectedOutputFormat}; папка={_outputDirectory.Text}; "
+                + $"чертёж={_document?.Name}; рамок={_rows.Count}; выбрано={_rows.Count(row => row.Selected)}");
+            PrintSessionLog.Info("Настройки: " + PrintSessionLog.DescribeSettings(_settings));
+            Print();
+        }
+        catch (Exception ex)
+        {
+            session.Result = "печать прервана исключением: " + ex.Message;
+            PrintSessionLog.Error("Печать прервана", ex);
+            MessageBox.Show(
+                "Ошибка универсальной пакетной печати: " + ex.Message + "\nЖурнал печати: " + PrintSessionLog.LastPath,
+                Title,
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     private void Print()
@@ -1845,6 +1863,7 @@ public sealed partial class RectangleBatchPlotForm : Window
 
         void AppendPrintLog(string level, string message)
         {
+            PrintSessionLog.Write(level, message);
             if (_settings.GeneratePrintLog)
             {
                 printLogLines.Add(BatchPlotLogger.Format(level, message));
@@ -1860,12 +1879,18 @@ public sealed partial class RectangleBatchPlotForm : Window
 
         static string BuildLogText(string path)
         {
-            return string.IsNullOrWhiteSpace(path) ? "" : $"\nЖурнал: {path}";
+            var text = "\nЖурнал печати: " + PrintSessionLog.LastPath;
+            return string.IsNullOrWhiteSpace(path) ? text : text + $"\nЖурнал: {path}";
         }
 
         AppendPrintLog(
             "INFO",
             $"Начало универсальной пакетной печати; листов={selected.Count}; формат={SelectedOutputFormat}; устройство={device}; стиль={SelectedStyle()}");
+        foreach (var job in selected)
+        {
+            PrintSessionLog.Info("Лист: " + PrintSessionLog.DescribeJob(job));
+        }
+
         var wasTopmost = Topmost;
         BatchPlotHostProgress.Begin();
         BatchPrintProgressSession? progress = null;
@@ -1932,6 +1957,10 @@ public sealed partial class RectangleBatchPlotForm : Window
                     result.Succeeded
                         ? $"Печать завершена; пространство={result.Job.SpaceName}; файл={finalOutput}"
                         : $"Ошибка печати; пространство={result.Job.SpaceName}; файл={finalOutput}; ошибка={result.Error}");
+                if (!result.Succeeded)
+                {
+                    PrintSessionLog.Error("Лист " + result.Job.SpaceName + " -> " + finalOutput, result.Error!);
+                }
             }
 
             var failures = results.Where(result => !result.Succeeded).ToList();
@@ -1999,20 +2028,25 @@ public sealed partial class RectangleBatchPlotForm : Window
         catch (Exception ex)
         {
             _status.Text = "Ошибка печати";
+            PrintSessionLog.Error("Печать прервана", ex);
             AppendPrintLog("ERROR", "Ошибка универсальной пакетной печати: " + ex);
             var printLogPath = SavePrintLog();
             MessageBox.Show("Ошибка универсальной пакетной печати: " + ex.Message + BuildLogText(printLogPath), Title, MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
+            // Every cleanup step runs even if a previous one fails: an exception here would close the CAD (issue #9).
             _printCts?.Dispose();
             _printCts = null;
 
-            _printButton.Content = "Начать печать";
-            _printButton.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 120, 215));
-            _printButton.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 95, 170));
-            Topmost = wasTopmost;
-            progress?.Dispose();
+            RunPrintCleanup("Сброс кнопки печати", () =>
+            {
+                _printButton.Content = "Начать печать";
+                _printButton.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 120, 215));
+                _printButton.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 95, 170));
+                Topmost = wasTopmost;
+            });
+            RunPrintCleanup("Закрытие окна хода печати", () => progress?.Dispose());
             progress = null;
             BatchPlotHostProgress.End();
 
@@ -2024,7 +2058,19 @@ public sealed partial class RectangleBatchPlotForm : Window
             {
                 try { Directory.Delete(temporaryDirectory, true); } catch { }
             }
-            UpdateVisuals();
+            RunPrintCleanup("Обновление окна", UpdateVisuals);
+        }
+    }
+
+    private static void RunPrintCleanup(string step, Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception ex)
+        {
+            PrintSessionLog.Error(step, ex);
         }
     }
 

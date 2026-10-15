@@ -34,9 +34,13 @@ public sealed class PlotStepException : Exception
         return $"{step}: {error.GetType().Name} 0x{error.HResult:X8}: {error.Message}";
     }
 
-    /// <summary>Runs one configuration step and wraps its failure into <see cref="PlotStepException"/>.</summary>
+    /// <summary>
+    /// Runs one configuration step and wraps its failure into <see cref="PlotStepException"/>.
+    /// The step is written to the print log before it runs: if the CAD dies in native code, the log ends with it (issue #9).
+    /// </summary>
     public static void Run(string step, Action action)
     {
+        PrintSessionLog.Step(step);
         try
         {
             action();
@@ -44,7 +48,11 @@ public sealed class PlotStepException : Exception
         catch (Exception ex) when (!(ex is PlotStepException))
         {
             var failure = new PlotStepException(step, ex);
-            TraceLog.Write("Plot step failed: " + failure.Message);
+            PrintSessionLog.Error("Plot step failed", failure);
+            if (TraceLog.Enabled)
+            {
+                TraceLog.Write("Plot step failed: " + failure.Message);
+            }
             throw failure;
         }
     }

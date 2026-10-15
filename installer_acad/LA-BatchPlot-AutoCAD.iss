@@ -1,5 +1,5 @@
 #define AppName "Teplov Print for AutoCAD"
-#define AppVersion "1.0.3"
+#define AppVersion "1.0.4"
 #define AppPublisher "Вячеслав Теплов"
 
 [Setup]

@@ -48,11 +48,16 @@ public static partial class PlotterService
         HostApplicationServices.WorkingDatabase = db;
         try
         {
+#if NANOCAD
+            // nanoCAD 24: the managed PlotEngine is empty and the native page setup of the layout crashed nanoCAD (issue #9).
+            PlotDatabaseThroughCom(db, job, deviceName, styleSheet, settings, plotDocument);
+#else
             OutputWithJobSettings(db, job, deviceName, styleSheet, settings, plotDocument, info =>
             {
                 PrepareOutputFile(job.OutputPath);
                 RunPlot(info, documentName, job.OutputPath, job.DrawingNumber);
             });
+#endif
             WaitForPlotIdle();
             ValidatePlotOutput(job.OutputPath);
         }
@@ -64,11 +69,8 @@ public static partial class PlotterService
 
     /// <summary>
     /// Builds the PlotInfo of the job and runs <paramref name="output"/> (plot or preview) with it.
-    /// AutoCAD: the job settings are passed as PlotInfo.OverrideSettings, the layout is not modified.
-    /// nanoCAD 24 rejected every override attempt with "External component has thrown an exception" (issue #7):
-    /// its native PlotSettingsValidator is applied there to a PlotSettings that is not in the database.
-    /// Then the settings are applied to the layout itself, as nanoCAD's own plotting API does, and the layout
-    /// page setup is restored after the output.
+    /// The job settings are passed as PlotInfo.OverrideSettings, the layout is not modified.
+    /// nanoCAD does not come here: it prints through its COM API (PlotterService.NanoCad.cs, issue #9).
     /// </summary>
     private static void OutputWithJobSettings(
         Database db,
@@ -79,37 +81,7 @@ public static partial class PlotterService
         Document? plotDocument,
         Action<PlotInfo> output)
     {
-#if NANOCAD
-        if (!_nanoCadPlotsThroughLayout)
-        {
-            try
-            {
-                OutputWithOverrideSettings(db, job, deviceName, styleSheet, settings, plotDocument, output);
-                return;
-            }
-            catch (PlotSettingsRejectedException overrideFailure)
-            {
-                TraceLog.Write("Override plot settings rejected, applying them to the layout: " + overrideFailure.Message);
-                try
-                {
-                    OutputWithConfiguredLayout(db, job, deviceName, styleSheet, settings, plotDocument, output);
-                }
-                catch (PlotSettingsRejectedException layoutFailure)
-                {
-                    throw new PlotSettingsRejectedException(
-                        overrideFailure.Message + " Печать с параметрами самого листа тоже не удалась: " + layoutFailure.Message,
-                        layoutFailure);
-                }
-
-                _nanoCadPlotsThroughLayout = true;
-                return;
-            }
-        }
-
-        OutputWithConfiguredLayout(db, job, deviceName, styleSheet, settings, plotDocument, output);
-#else
         OutputWithOverrideSettings(db, job, deviceName, styleSheet, settings, plotDocument, output);
-#endif
     }
 
     
@@ -140,91 +112,6 @@ public static partial class PlotterService
         tr.Commit();
     }
 
-#if NANOCAD
-    /// <summary>
-    /// The override settings were rejected by nanoCAD once; the next jobs go straight to the layout route
-    /// instead of repeating four failing native calls per sheet.
-    /// </summary>
-    private static bool _nanoCadPlotsThroughLayout;
-
-    /// <summary>
-    /// nanoCAD (issue #7): applies the job settings to the database-resident layout, plots it without
-    /// OverrideSettings and restores the original page setup of the layout afterwards.
-    /// </summary>
-    private static void OutputWithConfiguredLayout(
-        Database db,
-        PlotJob job,
-        string deviceName,
-        string styleSheet,
-        AppSettings settings,
-        Document? plotDocument,
-        Action<PlotInfo> output)
-    {
-        ObjectId layoutId;
-        PlotSettings original;
-        PlotInfo info;
-        using (var tr = db.TransactionManager.StartTransaction())
-        {
-            var layout = FindLayoutForJob(tr, db, job);
-            layoutId = layout.ObjectId;
-            original = new PlotSettings(layout.ModelType);
-            original.CopyFrom(layout);
-            var window = GetPlotWindow(job, plotDocument);
-            layout.UpgradeOpen();
-            try
-            {
-                using var plot = CreateValidatedPlot(
-                    layout,
-                    job,
-                    window,
-                    deviceName,
-                    styleSheet,
-                    settings.HideFrameBoundaryWhenPlotting,
-                    settings.PlotTransparency,
-                    settings.PlotObjectLineweights,
-                    configureLayout: true);
-                info = plot.Info;
-            }
-            catch
-            {
-                original.Dispose();
-                throw;
-            }
-
-            // The plot engine reads the layout from the database: the configured page setup has to be committed.
-            tr.Commit();
-        }
-
-        try
-        {
-            output(info);
-        }
-        finally
-        {
-            RestoreLayoutPlotSettings(db, layoutId, original);
-        }
-    }
-
-    
-    private static void RestoreLayoutPlotSettings(Database db, ObjectId layoutId, PlotSettings original)
-    {
-        try
-        {
-            using var tr = db.TransactionManager.StartTransaction();
-            var layout = (Layout)tr.GetObject(layoutId, OpenMode.ForWrite);
-            layout.CopyFrom(original);
-            tr.Commit();
-        }
-        catch (Exception ex)
-        {
-            TraceLog.Write("RestoreLayoutPlotSettings failed: " + ex);
-        }
-        finally
-        {
-            original.Dispose();
-        }
-    }
-#endif
 
     
     private static ValidatedPlot CreateValidatedPlot(
@@ -554,7 +441,11 @@ public static partial class PlotterService
         try
         {
             var settings = AppSettingsStore.Load();
+#if NANOCAD
+            PreviewDatabaseThroughCom(db, job, deviceName, styleSheet, settings, plotDocument);
+#else
             OutputWithJobSettings(db, job, deviceName, styleSheet, settings, plotDocument, info => RunPreview(info, documentName));
+#endif
             WaitForPlotIdle();
         }
         finally

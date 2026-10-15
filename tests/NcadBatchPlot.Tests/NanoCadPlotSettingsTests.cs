@@ -17,24 +17,17 @@ public class NanoCadPlotSettingsTests
     private const string StepExceptionType = "ZwcadBatchPlot.PlotStepException";
     private const string NanoCadMessage = "External component has thrown an exception.";
 
+    // Issue #9 replaced the 1.0.3 "configured layout" route (it closed nanoCAD): the page setup is written through COM
+    // and the layout's own page setup is restored after every sheet and preview.
     [Theory]
     [InlineData("PlotDatabase")]
     [InlineData("PreviewDatabase")]
-    public void RejectedOverrideSettingsAreAppliedToTheLayoutItself(string entry)
+    public void LayoutPageSetupIsRestoredAfterPlotting(string entry)
     {
         var graph = new PluginCallGraph(TestPaths.PluginPath);
 
-        var path = graph.FindPath($"{PlotterService}::{entry}", $"{PlotterService}::OutputWithConfiguredLayout");
-        Assert.True(path != null, $"{entry} has no nanoCAD route that plots the configured layout instead of OverrideSettings.");
-        Assert.NotNull(graph.FindPath($"{PlotterService}::{entry}", $"{PlotterService}::OutputWithOverrideSettings"));
-    }
-
-    [Fact]
-    public void LayoutPageSetupIsRestoredAfterPlotting()
-    {
-        var graph = new PluginCallGraph(TestPaths.PluginPath);
-
-        Assert.NotNull(graph.FindPath($"{PlotterService}::OutputWithConfiguredLayout", $"{PlotterService}::RestoreLayoutPlotSettings"));
+        Assert.NotNull(graph.FindPath($"{PlotterService}::{entry}", "ZwcadBatchPlot.NanoCadComPlot::CaptureLayout"));
+        Assert.NotNull(graph.FindPath($"{PlotterService}::{entry}", "ZwcadBatchPlot.NanoCadComLayoutSnapshot::Restore"));
     }
 
     [Fact]
@@ -44,6 +37,8 @@ public class NanoCadPlotSettingsTests
 
         Assert.NotNull(graph.FindPath($"{PlotterService}::ConfigurePlotSettings", $"{StepExceptionType}::Run"));
         Assert.NotNull(graph.FindPath($"{PlotterService}::CreateValidatedPlotCore", $"{StepExceptionType}::Run"));
+        Assert.NotNull(graph.FindPath("ZwcadBatchPlot.NanoCadComPlot::ApplyPageSetup", $"{StepExceptionType}::Run"));
+        Assert.NotNull(graph.FindPath("ZwcadBatchPlot.NanoCadComPlot::PlotToFile", $"{StepExceptionType}::Run"));
     }
 
     [Fact]

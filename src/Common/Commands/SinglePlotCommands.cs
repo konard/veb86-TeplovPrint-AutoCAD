@@ -299,8 +299,9 @@ public sealed partial class BatchPlotCommands
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToList();
 #if NANOCAD
-        // LA_pdf.pc3 is an AutoCAD plotter: nanoCAD prints through its internal PDF plotter (issue #5).
-        var device = NullIfEmpty(AcadPlotterInstaller.ResolvePdfPlotDevice(devices))
+        // LA_pdf.pc3 is an AutoCAD plotter: nanoCAD prints through the printer chosen in the main window (issue #13)
+        // or its internal PDF plotter (issue #5).
+        var device = NullIfEmpty(AcadPlotterInstaller.ResolvePdfPlotDevice(devices, settings.PdfPrinter))
             ?? throw new InvalidOperationException("Не найден доступный PDF-плоттер." + AcadPlotterInstaller.PdfDeviceNotFoundHint);
 #else
         var device = FindPlotOption(devices, AcadPlotterInstaller.PreferredPdfPlotter)

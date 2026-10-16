@@ -66,13 +66,22 @@ public static class AcadPlotterInstaller
     public static bool UsesBundledLaPlotters => true;
 #endif
 
-    /// <summary>PDF device to plot with: LA_pdf.pc3 in AutoCAD, the internal PDF plotter in nanoCAD ("" if none).</summary>
-    public static string ResolvePdfPlotDevice(IReadOnlyList<string> devices)
+    /// <summary>
+    /// True in nanoCAD: the main window shows the "Принтер" list and PDF, PNG and JPG are printed with the chosen device
+    /// (issue #13). AutoCAD always prints with LA_pdf.pc3, whose PMP carries the custom paper sizes.
+    /// </summary>
+    public static bool AllowsPdfPrinterChoice => !UsesBundledLaPlotters;
+
+    /// <summary>
+    /// PDF device to plot with: LA_pdf.pc3 in AutoCAD; in nanoCAD the <paramref name="chosenPrinter"/> of the main window
+    /// if it is installed, otherwise TEPLOV_PRINT_PDF_DEVICE or the internal PDF plotter ("" if none).
+    /// </summary>
+    public static string ResolvePdfPlotDevice(IReadOnlyList<string> devices, string? chosenPrinter = null)
     {
 #if NANOCAD
         var preferred = Environment.GetEnvironmentVariable(PdfDeviceEnvironmentVariable);
-        var device = PlotDeviceSelector.SelectPdfDevice(devices, preferred) ?? "";
-        TraceLog.Write("ResolvePdfPlotDevice: devices=[" + string.Join("; ", devices) + "], "
+        var device = PlotDeviceSelector.ResolvePdfDevice(devices, chosenPrinter, preferred) ?? "";
+        TraceLog.Write("ResolvePdfPlotDevice: devices=[" + string.Join("; ", devices) + "], chosen=" + (chosenPrinter ?? "") + ", "
                        + PdfDeviceEnvironmentVariable + "=" + (preferred ?? "") + ", selected=" + device);
         return device;
 #else
@@ -83,8 +92,8 @@ public static class AcadPlotterInstaller
     /// <summary>Appended to "device not found" messages for PDF/PNG/JPG output.</summary>
     public static string PdfDeviceNotFoundHint => UsesBundledLaPlotters
         ? ""
-        : " Встроенный PDF-плоттер nanoCAD не найден в списке устройств печати; укажите имя PDF-плоттера в переменной окружения "
-          + PdfDeviceEnvironmentVariable + " и перезапустите nanoCAD.";
+        : " Встроенный PDF-плоттер nanoCAD не найден в списке устройств печати; выберите принтер в списке «Принтер» главного окна"
+          + " или укажите имя PDF-плоттера в переменной окружения " + PdfDeviceEnvironmentVariable + " и перезапустите nanoCAD.";
 
 #if NANOCAD
     private static InstallResult SkipBundledLaPlotter(string deviceName)

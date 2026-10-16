@@ -52,6 +52,12 @@ public sealed class DirectoryColumnSetting
 public sealed class AppSettings
 {
     public string LastPlotDevice { get; set; } = "";
+
+    /// <summary>
+    /// nanoCAD (issue #13): the printer chosen in the "Принтер" list of the main window for PDF, PNG and JPG output;
+    /// empty — chosen automatically (the internal PDF plotter of nanoCAD).
+    /// </summary>
+    public string PdfPrinter { get; set; } = "";
     public string LastStyleSheet { get; set; } = "";
     public double PaperMatchToleranceMm { get; set; } = 1.0;
 
@@ -314,6 +320,7 @@ public static class AppSettingsStore
             settings.DirectoryTextHeightRatio = 0.42;
         }
 
+        settings.PdfPrinter = settings.PdfPrinter?.Trim() ?? "";
         settings.DirectoryTextStyleName ??= "";
         var legacyDirectoryFont = string.Equals(settings.DirectoryTextStyleName.Trim(), "\u5B8B\u4F53", StringComparison.Ordinal)
                                   || string.Equals(settings.DirectoryTextStyleName.Trim(), "SimSun", StringComparison.OrdinalIgnoreCase);

@@ -2199,7 +2199,8 @@ public sealed partial class RectangleBatchPlotForm : Window
             .Select(item => item?.ToString() ?? "")
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToList();
-        _pdfPlotDevice = AcadPlotterInstaller.ResolvePdfPlotDevice(devices);
+        // nanoCAD: the printer chosen in the main window (issue #13).
+        _pdfPlotDevice = AcadPlotterInstaller.ResolvePdfPlotDevice(devices, _settings.PdfPrinter);
 #if NANOCAD
         // LA_dwf.pc3 is not installed in nanoCAD (issue #5): use its own DWF plotter.
         _dwfPlotDevice = PlotDeviceSelector.SelectDwfDevice(devices) ?? "";

@@ -42,6 +42,42 @@ public static class PlotDeviceSelector
         return Select(list, "PDF", excludedMarker: null);
     }
 
+    /// <summary>
+    /// PDF device for nanoCAD (issue #13): the printer chosen in the main window if it is still installed (any device,
+    /// including Windows printers: it is the user's explicit choice), otherwise <see cref="SelectPdfDevice"/>
+    /// with the <paramref name="environmentPreferred"/> override (TEPLOV_PRINT_PDF_DEVICE).
+    /// </summary>
+    public static string? ResolvePdfDevice(IEnumerable<string> devices, string? chosen, string? environmentPreferred)
+    {
+        var list = Normalize(devices);
+        var choice = FindChoice(list, chosen);
+        return choice ?? SelectPdfDevice(list, environmentPreferred);
+    }
+
+    /// <summary>
+    /// Devices offered in the "Принтер" list of the main window (issue #13): every device of the CAD in its order,
+    /// without the "None" placeholder, duplicates and the bundled LA_*.pc3 AutoCAD templates.
+    /// </summary>
+    public static List<string> ListPrinterChoices(IEnumerable<string> devices)
+    {
+        return Normalize(devices)
+            .Where(device => !IsBundledTemplate(device) && !IsNoneDevice(device))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>The installed printer named <paramref name="chosen"/> (case-insensitive), or null.</summary>
+    public static string? FindChoice(IEnumerable<string> devices, string? chosen)
+    {
+        if (string.IsNullOrWhiteSpace(chosen))
+        {
+            return null;
+        }
+
+        var name = chosen!.Trim();
+        return ListPrinterChoices(devices).FirstOrDefault(device => string.Equals(device, name, StringComparison.OrdinalIgnoreCase));
+    }
+
     /// <summary>DWF (not DWFx) device for file output, or null.</summary>
     public static string? SelectDwfDevice(IEnumerable<string> devices)
     {
@@ -55,6 +91,13 @@ public static class PlotDeviceSelector
         return name.StartsWith("LA_", StringComparison.OrdinalIgnoreCase)
                && (name.EndsWith(".pc3", StringComparison.OrdinalIgnoreCase)
                    || name.EndsWith(".pc5", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>"None" of AutoCAD, "Нет" of the Russian nanoCAD UI: no plotter, nothing to print with.</summary>
+    private static bool IsNoneDevice(string device)
+    {
+        return string.Equals(device, "None", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(device, "Нет", StringComparison.OrdinalIgnoreCase);
     }
 
     private static List<string> Normalize(IEnumerable<string> devices)

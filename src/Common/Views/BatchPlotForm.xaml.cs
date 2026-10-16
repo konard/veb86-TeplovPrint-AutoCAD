@@ -141,6 +141,9 @@ public sealed partial class BatchPlotForm : Window
         _outputFormatCombo.Items.Add("DWG");
         _outputFormatCombo.SelectedIndex = 0;
         RefreshSavePathModeOptions(preserveSelection: false);
+        var printerChoice = AcadPlotterInstaller.AllowsPdfPrinterChoice ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        _printerLabel.Visibility = printerChoice;
+        _printerCombo.Visibility = printerChoice;
 
         try
         {
@@ -156,8 +159,9 @@ public sealed partial class BatchPlotForm : Window
                 .Select(item => item?.ToString() ?? "")
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .ToList();
-            _pdfPlotDevice = AcadPlotterInstaller.ResolvePdfPlotDevice(devices);
+            _pdfPlotDevice = AcadPlotterInstaller.ResolvePdfPlotDevice(devices, _settings.PdfPrinter);
             _dwfPlotDevice = FindDwfPlotDevice(devices, dwfInstall.DeviceName);
+            LoadPrinterChoices(devices);
             foreach (var style in PlotStyleManager.GetAvailableCtbStyles())
             {
                 _styleCombo.Items.Add(style);
@@ -173,6 +177,26 @@ public sealed partial class BatchPlotForm : Window
         UpdateOutputFormatUi();
         SaveCurrentSettings();
         _styleSelectionReady = true;
+    }
+
+    /// <summary>
+    /// nanoCAD (issue #13): the "Принтер" list next to CTB. Shows the devices of nanoCAD with the printer PDF, PNG and JPG
+    /// are printed with selected: the one chosen earlier or, until the user chooses, the automatic one.
+    /// </summary>
+    private void LoadPrinterChoices(IReadOnlyList<string> devices)
+    {
+        _printerCombo.Items.Clear();
+        if (!AcadPlotterInstaller.AllowsPdfPrinterChoice)
+        {
+            return;
+        }
+
+        foreach (var printer in PlotDeviceSelector.ListPrinterChoices(devices))
+        {
+            _printerCombo.Items.Add(printer);
+        }
+
+        _printerCombo.SelectedItem = PlotDeviceSelector.FindChoice(devices, _pdfPlotDevice);
     }
 
     private static string FindDwfPlotDevice(IReadOnlyList<string> devices, string installedPlotter)
@@ -2356,6 +2380,8 @@ public sealed partial class BatchPlotForm : Window
             control.IsEnabled = plotOutput;
         }
         _styleSettingsButton.IsEnabled = plotOutput && _styleCombo.SelectedIndex >= 0;
+        // DWF is printed with the DWF plotter of nanoCAD; PNG and JPG are made from the PDF of the chosen printer.
+        _printerCombo.IsEnabled = plotOutput && !IsDwfOutput;
         _mergePdfCheckBox.IsEnabled = IsPdfOutput;
 
         _leaveMarginCheckBox.IsEnabled = SupportsLeaveMargin;
@@ -3149,6 +3175,20 @@ public sealed partial class BatchPlotForm : Window
         {
             SaveCurrentSettings();
         }
+    }
+
+    private void Printer_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_uiReady || _printerCombo.SelectedItem is not string printer)
+        {
+            return;
+        }
+
+        _pdfPlotDevice = printer;
+        _settings.PdfPrinter = printer;
+        SaveCurrentSettings();
+        RefreshStatus();
+        AppendLog("INFO", "Принтер для печати PDF, PNG и JPG: " + printer);
     }
 
     private void LeaveMargin_CheckedChanged(object sender, RoutedEventArgs e)
